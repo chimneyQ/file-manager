@@ -3,9 +3,9 @@
  * 所有敏感配置统一管理，支持环境变量覆盖
  */
 
-// 读取环境变量中的非负整数（支持显式 0；非法值回退默认）
-const envInt = (name, dflt) => {
-  const n = parseInt(process.env[name], 10);
+// 读取环境变量中的非负数（支持显式 0 与小数，如 0.5；非法值回退默认）
+const envNum = (name, dflt) => {
+  const n = parseFloat(process.env[name]);
   return Number.isFinite(n) && n >= 0 ? n : dflt;
 };
 
@@ -90,6 +90,7 @@ module.exports = {
     
     // IP 地理位置 API 请求限制（每分钟）
     geoApiRateLimit: 30,                  // 每分钟最多 30 次（ip-api.com 免费版 45次/分，留余量）
+    geoTimeoutMs: 3000,                   // 单个地理查询源超时（毫秒）；主源失败自动切备用源
     
     // 是否启用 IP 地理位置查询
     enableGeoLookup: true,
@@ -157,13 +158,13 @@ module.exports = {
   // 所有用户私有目录均为 0 字节 —— 因此私有配额默认值对现有用户零影响。
   storage: {
     // 单个用户私有目录（uploads/users/<用户名>）配额，单位 GB；0 = 不限制。超管不受限。
-    privateQuotaGB: envInt('UPLOAD_PRIVATE_QUOTA_GB', 5),
+    privateQuotaGB: envNum('UPLOAD_PRIVATE_QUOTA_GB', 5),
     // 整站上传目录用量告警阈值（只写日志告警，不拦截）；0 = 关闭
-    totalWarnGB: envInt('UPLOAD_TOTAL_WARN_GB', 45),
+    totalWarnGB: envNum('UPLOAD_TOTAL_WARN_GB', 45),
     // 整站上传目录硬上限（超过后拒绝非超管上传）；0 = 不限制
-    totalLimitGB: envInt('UPLOAD_TOTAL_LIMIT_GB', 0),
+    totalLimitGB: envNum('UPLOAD_TOTAL_LIMIT_GB', 0),
     // 用量扫描间隔（毫秒），默认 6 小时；0 = 不周期扫描
-    scanInterval: envInt('UPLOAD_SCAN_INTERVAL_MS', 6 * 60 * 60 * 1000),
+    scanInterval: envNum('UPLOAD_SCAN_INTERVAL_MS', 6 * 60 * 60 * 1000),
   },
 
   // ========== 上传配置 ==========
