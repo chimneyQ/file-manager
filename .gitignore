@@ -26,7 +26,8 @@ yarn-error.log*
 data/users.json
 
 # 运行时数据与临时产物
-data/*.bak
+data/*.bak*
+data/users.json.*
 uploads/
 .tmp-*
 _t*.js

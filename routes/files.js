@@ -155,6 +155,22 @@ module.exports = function(app, ctx) {
         return res.status(400).json({ success: false, message: '没有文件被上传' });
       }
 
+      // 配额二次校验：以 multer 归一化后的真实落盘目标 + 文件实际大小为准。
+      // 原因：multipart 的 body 字段在守卫阶段尚未解析（req.body.path 为 undefined），
+      // 守卫只能覆盖带 ?path= 查询参数的上传；只带 body 字段的请求会绕过守卫判定，
+      // 这里以 req._normalizedUploadPath（身份归一化后的落盘目录）复核并回滚已写入的文件。
+      const quotaMsg = storage && typeof storage.checkQuota === 'function'
+        ? storage.checkQuota(req, currentPath, req.file.size)
+        : null;
+      if (quotaMsg) {
+        try { fs.removeSync(req.file.path); } catch (e) {}
+        writeLog(getLogFile(), createLogEntry(req, {
+          loginType: isAdmin(req) ? '管理员' : '游客',
+          operation: '上传被拒', path: currentPath, fileType: '-', message: quotaMsg,
+        }));
+        return res.status(413).json({ success: false, message: quotaMsg });
+      }
+
       const ext = pathMod.extname(req.file.filename).toLowerCase();
       writeLog(getLogFile(), createLogEntry(req, {
         loginType: isAdmin(req) ? '管理员' : '游客',

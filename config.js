@@ -91,6 +91,7 @@ module.exports = {
     // IP 地理位置 API 请求限制（每分钟）
     geoApiRateLimit: 30,                  // 每分钟最多 30 次（ip-api.com 免费版 45次/分，留余量）
     geoTimeoutMs: 3000,                   // 单个地理查询源超时（毫秒）；主源失败自动切备用源
+    geoFailCacheTime: 5 * 60 * 1000,      // 查询失败结果的短缓存（毫秒），避免每条日志重查；0 = 关闭
     
     // 是否启用 IP 地理位置查询
     enableGeoLookup: true,

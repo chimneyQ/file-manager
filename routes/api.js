@@ -8,7 +8,7 @@ module.exports = function(app, ctx) {
   const http = require('http');
   const https = require('https');
   const { isAdmin, UPLOAD_DIR, writeLog, createLogEntry, getLogFile,
-          getIpLocation, getClientIp, performance: perfCfg } = ctx;
+          getIpLocation, getClientIp, performance: perfCfg, storage } = ctx;
 
   let serverSideExternalIp = null;
   let serverSideExternalIpTime = 0;
@@ -75,6 +75,39 @@ module.exports = function(app, ctx) {
   });
 
   // 客户端IP
+  // 存储用量与配额（仅超级管理员）——上传目录 38GB 长期无可见性，这里给出唯一观测入口
+  app.get('/api/storage', (req, res) => {
+    const isSuper = req.session?.isSuperAdmin === true || req.session?.userRole === 'superadmin';
+    if (!isSuper) return res.status(403).json({ success: false, message: '仅超级管理员可查看' });
+    if (!storage || typeof storage.getSnapshot !== 'function') {
+      return res.json({ success: true, enabled: false, snapshot: null, message: '存储监控未启用' });
+    }
+    const snap = storage.getSnapshot();
+    const cfg = typeof storage.getConfig === 'function' ? storage.getConfig() : {};
+    const GB = 1024 * 1024 * 1024;
+    const users = snap
+      ? Object.keys(snap.users).map(n => ({ name: n, bytes: snap.users[n] })).sort((a, b) => b.bytes - a.bytes)
+      : [];
+    res.json({
+      success: true,
+      enabled: true,
+      config: {
+        privateQuotaGB: cfg.privateQuotaBytes ? +(cfg.privateQuotaBytes / GB).toFixed(4) : 0,
+        totalWarnGB: cfg.totalWarnBytes ? +(cfg.totalWarnBytes / GB).toFixed(4) : 0,
+        totalLimitGB: cfg.totalLimitBytes ? +(cfg.totalLimitBytes / GB).toFixed(4) : 0,
+        scanIntervalMs: cfg.scanInterval || 0,
+      },
+      snapshot: snap ? {
+        totalBytes: snap.total,
+        totalGB: +(snap.total / GB).toFixed(2),
+        files: snap.files,
+        zones: snap.zones,
+        users,
+        scannedAt: new Date(snap.scannedAt).toISOString(),
+      } : null,
+    });
+  });
+
   app.get('/api/client-ip', (req, res) => {
     res.json({
       internalIp: getClientIp(req),
