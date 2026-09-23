@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>访问日志</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/fontawesome.min.css">
+  <link rel="stylesheet" href="/css/logs.css">
+</head>
+<body class="log-page <%= darkMode ? 'dark-mode' : '' %>">
+<div class="container">
+
+  <header class="log-header">
+    <div class="logo"><i class="fas fa-clipboard-list"></i><span>访问日志</span></div>
+    <div class="header-actions">
+      <a href="/" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> 返回</a>
+      <a href="/logout" class="btn btn-secondary"><i class="fas fa-sign-out-alt"></i> 退出</a>
+    </div>
+  </header>
+
+  <section class="log-stats">
+    <div class="stat-card">
+      <div class="stat-icon visits"><i class="fas fa-list"></i></div>
+      <div class="stat-label">总访问次数</div>
+      <div class="stat-value"><%= total %></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon devices"><i class="fas fa-desktop"></i></div>
+      <div class="stat-label">独立设备数</div>
+      <div class="stat-value"><%= uniqueDeviceCount %></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon today"><i class="fas fa-eye"></i></div>
+      <div class="stat-label">已显示 / 总计</div>
+      <div class="stat-value"><%= offset + logs.length %> / <%= total %></div>
+    </div>
+  </section>
+
+  <% if (typeof downloadRanking !== 'undefined' && downloadRanking.length > 0) { %>
+  <div class="download-ranking">
+    <h4><i class="fas fa-download"></i> 下载排行榜 Top 10</h4>
+    <div class="ranking-list">
+      <% downloadRanking.slice(0, 10).forEach(function(item, idx) { %>
+      <div class="ranking-item">
+        <span class="ranking-index"><%= idx + 1 %>.</span>
+        <span class="ranking-path" title="<%= item.path %>"><%= item.path %></span>
+        <span class="ranking-count"><%= item.count %> 次</span>
+      </div>
+      <% }); %>
+    </div>
+  </div>
+  <% } %>
+
+  <section class="log-toolbar">
+    <div class="toolbar-filters">
+      <select id="dateFilter" onchange="changeDate(this.value)">
+        <option value="all" <%= dateFilter === 'all' ? 'selected' : '' %>>全部日志</option>
+        <option value="today" <%= dateFilter === 'today' ? 'selected' : '' %>>今天</option>
+        <option value="yesterday" <%= dateFilter === 'yesterday' ? 'selected' : '' %>>昨天</option>
+        <option value="week" <%= dateFilter === 'week' ? 'selected' : '' %>>最近7天</option>
+        <option value="month" <%= dateFilter === 'month' ? 'selected' : '' %>>最近30天</option>
+      </select>
+      <% if (typeof opBreakdown !== 'undefined' && opBreakdown && Object.keys(opBreakdown).length > 0) { %>
+      <select id="opFilter" onchange="filterByOp(this.value)">
+        <option value="all">全部操作</option>
+        <% Object.keys(opBreakdown).forEach(function(op) { %>
+        <option value="<%= op %>"><%= op %></option>
+        <% }); %>
+      </select>
+      <% } %>
+      <input type="search" id="searchBox" placeholder="搜索 IP 或路径..." oninput="filterBySearch(this.value)">
+    </div>
+    <div class="toolbar-actions">
+      <button onclick="expandAll()"><i class="fas fa-expand-alt"></i> 展开</button>
+      <button onclick="collapseAll()"><i class="fas fa-compress-alt"></i> 折叠</button>
+      <button onclick="location.reload()"><i class="fas fa-sync-alt"></i> 刷新</button>
+      <a href="/api/logs/export?date=<%= dateFilter %>&format=csv" class="export-btn csv"><i class="fas fa-file-csv"></i> CSV</a>
+      <a href="/api/logs/export?date=<%= dateFilter %>&format=json" class="export-btn json"><i class="fas fa-file-code"></i> JSON</a>
+    </div>
+  </section>
+
+  <div class="view-toggle">
+    <button class="active" data-view="session" onclick="switchView('session')">会话视图</button>
+    <button data-view="detail" onclick="switchView('detail')">明细视图</button>
+  </div>
+
+  <% function opClass(op) {
+    if (!op) return 'op-default';
+    if (op.includes('上传')) return 'op-upload';
+    if (op.includes('下载')) return 'op-download';
+    if (op.includes('删除')) return 'op-delete';
+    if (op.includes('创建')) return 'op-mkdir';
+    if (op.includes('搜索')) return 'op-search';
+    if (op.includes('预览')) return 'op-preview';
+    return 'op-default';
+  } %>
+
+  <div id="sessionView" class="log-list">
+    <% if (logs.length === 0) { %>
+      <div class="empty-state">
+        <i class="fas fa-clipboard-list"></i>
+        <p>暂无访问日志</p>
+      </div>
+    <% } else { %>
+      <%
+        var TIME_WINDOW = 60 * 60 * 1000;
+        var sortedLogs = [...logs].sort(function(a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
+        var sessions = [];
+        var currentSession = null;
+        sortedLogs.forEach(function(log, index) {
+          var logTime = new Date(log.timestamp).getTime();
+          var internalIp = log.internalIp || '-';
+          var externalIp = log.externalIp || '-';
+          var deviceKey = externalIp !== '-' ? externalIp : internalIp;
+          var needNewSession = !currentSession ||
+            currentSession.deviceKey !== deviceKey ||
+            currentSession.endTime - logTime > TIME_WINDOW;
+          if (needNewSession) {
+            if (currentSession) sessions.push(currentSession);
+            currentSession = {
+              deviceKey: deviceKey, internalIp: internalIp, externalIp: externalIp,
+              logs: [], index: sessions.length, endTime: logTime
+            };
+          }
+          currentSession.endTime = Math.max(currentSession.endTime, logTime);
+          currentSession.logs.push(Object.assign({}, log, { originalIndex: index }));
+          if (log.externalIp && log.externalIp !== '-') currentSession.externalIp = log.externalIp;
+        });
+        if (currentSession) sessions.push(currentSession);
+        sessions.sort(function(a, b) { return b.endTime - a.endTime; });
+      %>
+
+      <% sessions.forEach(function(session) { %>
+        <% var opCounts = {}; %>
+        <% session.logs.forEach(function(log) {
+          var type = log.operation || log.method || 'other';
+          opCounts[type] = (opCounts[type] || 0) + 1;
+        }); %>
+
+        <% var hasRealInternalIp = session.internalIp && session.internalIp !== '-' && session.internalIp !== '127.0.0.1' && session.internalIp !== session.externalIp; %>
+        <% var isInternalNetwork = session.internalIp && (session.internalIp.startsWith('10.') || session.internalIp.startsWith('192.168.') || session.internalIp.startsWith('172.')); %>
+        <% var showExt = session.externalIp && session.externalIp !== '-' && session.externalIp !== 'unknown'; %>
+
+        <div class="session-card" data-session="<%= session.index %>">
+          <div class="session-header" onclick="toggleSession(<%= session.index %>)">
+            <i class="fas fa-chevron-right session-expand"></i>
+            <div class="session-info">
+              <div class="session-ip-row">
+                <% if (hasRealInternalIp && isInternalNetwork) { %>
+                  <span class="ip-badge internal"><span class="tag">内网</span> <%= session.internalIp %></span>
+                <% } %>
+                <% if (showExt) { %>
+                  <span class="ip-badge external"><span class="tag">外网</span> <%= session.externalIp %></span>
+                  <span class="ip-location" data-ip="<%= session.externalIp %>">查询中...</span>
+                <% } else if (hasRealInternalIp && !isInternalNetwork) { %>
+                  <span class="ip-badge external"><span class="tag">外网</span> <%= session.internalIp %></span>
+                  <span class="ip-location" data-ip="<%= session.internalIp %>">查询中...</span>
+                <% } else if (!hasRealInternalIp) { %>
+                  <span class="ip-badge"><%= session.internalIp %></span>
+                <% } %>
+              </div>
+              <div class="session-ops">
+                <% Object.keys(opCounts).forEach(function(type) { %>
+                  <span class="op-badge <%= opClass(type) %>"><%= type %> &times;<%= opCounts[type] %></span>
+                <% }); %>
+              </div>
+            </div>
+            <div class="session-meta">
+              <span class="session-time hide-mobile"><%= session.logs[session.logs.length - 1].timestamp %> &rarr; <%= session.logs[0].timestamp %></span>
+              <span class="session-count"><%= session.logs.length %></span>
+            </div>
+          </div>
+          <div class="session-detail">
+            <%
+              var groupedLogs = [];
+              session.logs.forEach(function(log) {
+                var op = log.operation || log.method;
+                var p = log.path || '-';
+                var last = groupedLogs[groupedLogs.length - 1];
+                if (last && last.op === op && last.path === p) { last.count++; last.latestTime = log.timestamp; }
+                else { groupedLogs.push({ op: op, path: p, count: 1, latestTime: log.timestamp, externalIp: log.externalIp }); }
+              });
+            %>
+            <% groupedLogs.forEach(function(item) { %>
+              <div class="detail-row">
+                <span class="detail-time"><%= item.latestTime %></span>
+                <span class="detail-op op-badge <%= opClass(item.op) %>"><%= item.op %><% if (item.count > 1) { %> <span class="count-badge">×<%= item.count %></span><% } %></span>
+                <span class="detail-path"><%= item.path %></span>
+                <% if (item.externalIp && item.externalIp !== '-' && item.externalIp !== 'unknown') { %>
+                  <span class="detail-ip hide-mobile">[<%= item.externalIp %>]</span>
+                <% } %>
+              </div>
+            <% }); %>
+          </div>
+        </div>
+      <% }); %>
+    <% } %>
+  </div>
+
+  <div id="detailView" style="display:none">
+    <% if (logs.length === 0) { %>
+      <div class="empty-state">
+        <i class="fas fa-clipboard-list"></i>
+        <p>暂无访问日志</p>
+      </div>
+    <% } else { %>
+      <div class="log-table-wrapper">
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>操作</th>
+              <th>路径</th>
+              <th class="hide-mobile">内网 IP</th>
+              <th class="hide-mobile">外网 IP</th>
+              <th>登录类型</th>
+            </tr>
+          </thead>
+          <tbody>
+            <%
+              var groupedLogs = [];
+              [...logs].sort(function(a, b) { return new Date(b.timestamp) - new Date(a.timestamp); }).forEach(function(log) {
+                var op = log.operation || log.method, p = log.path || '-', iIp = log.internalIp || '-', eIp = log.externalIp || '-', lt = log.loginType || '';
+                var last = groupedLogs[groupedLogs.length - 1];
+                if (last && last.op===op && last.path===p && last.iIp===iIp && last.eIp===eIp && last.lt===lt) { last.count++; last.latestTime = log.timestamp; }
+                else { groupedLogs.push({ op:op, path:p, iIp:iIp, eIp:eIp, lt:lt, count:1, latestTime:log.timestamp }); }
+              });
+            %>
+            <% groupedLogs.forEach(function(item) { %>
+              <tr>
+                <td><%= item.latestTime %></td>
+                <td><span class="op-badge <%= opClass(item.op) %>"><%= item.op %><% if (item.count > 1) { %> <span class="count-badge">×<%= item.count %></span><% } %></span></td>
+                <td><%= item.path %></td>
+                <td class="hide-mobile"><%= item.iIp %></td>
+                <td class="hide-mobile"><%= item.eIp %></td>
+                <td><%= item.lt %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </div>
+
+  <% if (totalPages > 1) { %>
+  <div class="pagination">
+    <% var pgWindow = 2; var startPage = Math.max(1, currentPage - pgWindow); var endPage = Math.min(totalPages, currentPage + pgWindow); %>
+    <% if (currentPage > 1) { %>
+      <a href="/logs?date=<%= dateFilter %>&page=<%= currentPage - 1 %>&limit=<%= limit %>" class="page-btn"><i class="fas fa-angle-left"></i></a>
+    <% } else { %>
+      <span class="page-btn disabled"><i class="fas fa-angle-left"></i></span>
+    <% } %>
+    <% for (var p = startPage; p <= endPage; p++) { %>
+      <a href="/logs?date=<%= dateFilter %>&page=<%= p %>&limit=<%= limit %>" class="page-btn <%= p === currentPage ? 'active' : '' %>"><%= p %></a>
+    <% } %>
+    <% if (currentPage < totalPages) { %>
+      <a href="/logs?date=<%= dateFilter %>&page=<%= currentPage + 1 %>&limit=<%= limit %>" class="page-btn"><i class="fas fa-angle-right"></i></a>
+    <% } else { %>
+      <span class="page-btn disabled"><i class="fas fa-angle-right"></i></span>
+    <% } %>
+    <div class="page-info">第 <%= currentPage %> / <%= totalPages %> 页 &middot; 共 <%= total %> 条</div>
+  </div>
+  <% } %>
+
+</div>
+
+<script>
+function changeDate(value) {
+  window.location.href = '/logs?date=' + value + '&limit=<%= limit %>';
+}
+
+function toggleSession(idx) {
+  var card = document.querySelector('[data-session="' + idx + '"]');
+  if (!card) return;
+  var detail = card.querySelector('.session-detail');
+  var icon = card.querySelector('.session-expand');
+  if (detail.classList.contains('open')) {
+    detail.classList.remove('open');
+    icon.classList.remove('expanded');
+  } else {
+    detail.classList.add('open');
+    icon.classList.add('expanded');
+    loadIpLocationsInCard(card);
+  }
+}
+
+function expandAll() {
+  document.querySelectorAll('.session-detail').forEach(function(d) { d.classList.add('open'); });
+  document.querySelectorAll('.session-expand').forEach(function(i) { i.classList.add('expanded'); });
+  document.querySelectorAll('.session-card').forEach(function(c) { loadIpLocationsInCard(c); });
+}
+
+function collapseAll() {
+  document.querySelectorAll('.session-detail').forEach(function(d) { d.classList.remove('open'); });
+  document.querySelectorAll('.session-expand').forEach(function(i) { i.classList.remove('expanded'); });
+}
+
+function switchView(view) {
+  document.querySelectorAll('.view-toggle button').forEach(function(btn) { btn.classList.remove('active'); });
+  document.querySelector('.view-toggle button[data-view="' + view + '"]').classList.add('active');
+  document.getElementById('sessionView').style.display = view === 'session' ? 'flex' : 'none';
+  document.getElementById('detailView').style.display = view === 'detail' ? 'block' : 'none';
+}
+
+function filterByOp(value) {
+  document.querySelectorAll('.session-card').forEach(function(card) {
+    if (value === 'all') { card.style.display = 'block'; return; }
+    var badges = card.querySelectorAll('.session-ops .op-badge');
+    var match = false;
+    badges.forEach(function(badge) {
+      if (badge.textContent.includes(value)) match = true;
+    });
+    card.style.display = match ? 'block' : 'none';
+  });
+  document.querySelectorAll('.log-table tbody tr').forEach(function(row) {
+    if (value === 'all') { row.style.display = ''; return; }
+    var opCell = row.querySelector('.op-badge');
+    row.style.display = (opCell && opCell.textContent.includes(value)) ? '' : 'none';
+  });
+}
+
+function filterBySearch(value) {
+  var q = value.toLowerCase().trim();
+  document.querySelectorAll('.session-card').forEach(function(card) {
+    if (!q) { card.style.display = 'block'; return; }
+    card.style.display = card.textContent.toLowerCase().includes(q) ? 'block' : 'none';
+  });
+  document.querySelectorAll('.log-table tbody tr').forEach(function(row) {
+    if (!q) { row.style.display = ''; return; }
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+var locationCache = new Map();
+async function queryIpLocation(ip) {
+  if (locationCache.has(ip)) return locationCache.get(ip);
+  try {
+    var response = await fetch('/api/ip-location/' + encodeURIComponent(ip));
+    var data = await response.json();
+    var location = data.location || '未知';
+    locationCache.set(ip, location);
+    return location;
+  } catch (e) {
+    locationCache.set(ip, '查询失败');
+    return '查询失败';
+  }
+}
+
+async function loadIpLocationsInCard(card) {
+  var elements = card.querySelectorAll('.ip-location[data-ip]');
+  for (var i = 0; i < elements.length; i++) {
+    var el = elements[i];
+    var ip = el.dataset.ip;
+    if (!ip || ip === '-') continue;
+    if (locationCache.has(ip)) {
+      el.textContent = locationCache.get(ip);
+    } else {
+      el.textContent = '查询中...';
+      var location = await queryIpLocation(ip);
+      el.textContent = location;
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  // 页面加载后自动查询所有 IP 位置
+  document.querySelectorAll('.session-card').forEach(function(card) {
+    setTimeout(function() { loadIpLocationsInCard(card); }, 100);
+  });
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') collapseAll();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 - 文件管理器</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/fontawesome.min.css">
+</head>
+<body class="login-page">
+  <div class="login-container">
+    <div class="login-box">
+      <div class="login-header">
+        <i class="fas fa-sign-in-alt"></i>
+        <h1>文件管理器</h1>
+      </div>
+      <% if (typeof error !== 'undefined' && error) { %>
+        <div class="error-message"><i class="fas fa-exclamation-circle"></i> <%= error %></div>
+      <% } %>
+      <form method="POST" action="/login">
+        <div class="form-group">
+          <label><i class="fas fa-user"></i> 账号</label>
+          <input type="text" name="username" required placeholder="请输入账号" autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> 密码</label>
+          <input type="password" name="password" required placeholder="请输入密码" autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:8px;">
+          <i class="fas fa-sign-in-alt"></i> 登录
+        </button>
+      </form>
+      <div style="text-align:center;margin-top:16px;display:flex;justify-content:center;gap:16px;flex-wrap:wrap;">
+        <a href="/" style="color:var(--text-muted);font-size:14px;"><i class="fas fa-home"></i> 返回首页</a>
+        <a href="/register" style="color:var(--primary-color);font-size:14px;"><i class="fas fa-user-plus"></i> 注册新账号</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

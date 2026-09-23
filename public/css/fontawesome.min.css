@@ -1,0 +1,74 @@
+/**
+ * 图标样式 - Unicode 方案（零外部依赖）
+ * 53个图标用 Unicode/CSS 实现，无需字体文件
+ */
+.fas, .fa-solid {
+  display: inline-block;
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1;
+  text-rendering: auto;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 图标 Unicode 映射 */
+.fa-angle-double-left::before { content: "\00AB"; }
+.fa-angle-double-right::before { content: "\00BB"; }
+.fa-angle-left::before { content: "\2039"; }
+.fa-angle-right::before { content: "\203A"; }
+.fa-arrow-down::before { content: "\2193"; }
+.fa-arrow-left::before { content: "\2190"; }
+.fa-calendar::before { content: "\1F4C5"; font-size: 0.9em; }
+.fa-chart-bar::before { content: "\1F4CA"; font-size: 0.9em; }
+.fa-check::before { content: "\2713"; }
+.fa-check-circle::before { content: "\2714"; }
+.fa-chevron-down::before { content: "\25BC"; font-size: 0.7em; }
+.fa-chevron-left::before { content: "\25C0"; font-size: 0.7em; }
+.fa-chevron-right::before { content: "\25B6"; font-size: 0.7em; }
+.fa-clipboard-list::before { content: "\1F4CB"; font-size: 0.9em; }
+.fa-clock::before { content: "\1F552"; font-size: 0.9em; }
+.fa-cloud-upload-alt::before { content: "\2601"; font-size: 1.1em; }
+.fa-compress-alt::before { content: "\2194"; }
+.fa-copy::before { content: "\1F5C4"; font-size: 0.9em; }
+.fa-desktop::before { content: "\1F5A5"; font-size: 0.9em; }
+.fa-download::before { content: "\21E3"; }
+.fa-exclamation-circle::before { content: "\26A0"; }
+.fa-exclamation-triangle::before { content: "\26A0"; }
+.fa-expand-alt::before { content: "\21F1"; }
+.fa-eye::before { content: "\1F441"; }
+.fa-file::before { content: "\1F4C4"; font-size: 0.9em; }
+.fa-file-alt::before { content: "\1F4C4"; font-size: 0.9em; }
+.fa-file-code::before { content: "\1F4C4"; font-size: 0.9em; }
+.fa-file-csv::before { content: "\1F4CA"; font-size: 0.9em; }
+.fa-folder::before { content: "\1F4C1"; font-size: 0.9em; }
+.fa-folder-open::before { content: "\1F4C2"; font-size: 0.9em; }
+.fa-folder-plus::before { content: "\1F4C1"; font-size: 0.9em; }
+.fa-home::before { content: "\2302"; }
+.fa-info-circle::before { content: "\2139"; }
+.fa-key::before { content: "\1F511"; font-size: 0.9em; }
+.fa-list::before { content: "\2630"; }
+.fa-lock::before { content: "\1F512"; font-size: 0.9em; }
+.fa-moon::before { content: "\263D"; }
+.fa-music::before { content: "\266B"; }
+.fa-network-wired::before { content: "\1F517"; font-size: 0.9em; }
+.fa-search::before { content: "\1F50D"; font-size: 0.9em; }
+.fa-share-alt::before { content: "\1F517"; font-size: 0.9em; }
+.fa-shield-alt::before { content: "\1F6E1"; font-size: 0.9em; }
+.fa-sign-in-alt::before { content: "\21AA"; }
+.fa-sign-out-alt::before { content: "\21A9"; }
+.fa-spinner::before { content: "\21BB"; }
+.fa-sun::before { content: "\2600"; font-size: 1.1em; }
+.fa-sync-alt::before { content: "\21BB"; }
+.fa-times::before { content: "\2715"; }
+.fa-trash-alt::before { content: "\1F5D1"; font-size: 0.9em; }
+.fa-trash-restore::before { content: "\21A9"; }
+.fa-undo::before { content: "\21BA"; }
+.fa-upload::before { content: "\21E1"; }
+.fa-user::before { content: "\1F464"; font-size: 0.9em; }
+
+/* 旋转动画（spinner 用） */
+@keyframes fa-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.fa-spin { animation: fa-spin 1s infinite linear; }

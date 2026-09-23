@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>用户管理 - 文件管理器</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/fontawesome.min.css">
+  <style>
+    .user-card{background:var(--card-bg);border:1px solid var(--border-color);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;transition:box-shadow .2s}
+    .user-card:hover{box-shadow:var(--shadow)}
+    .user-avatar{width:44px;height:44px;border-radius:50%;background:var(--primary-light);color:var(--primary-color);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0}
+    .user-info{flex:1;min-width:200px}
+    .user-info .name{font-weight:600;font-size:15px}
+    .user-info .meta{font-size:12px;color:var(--text-muted);margin-top:2px}
+    .user-badges{display:flex;gap:6px;flex-wrap:wrap}
+    .badge{font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600}
+    .badge-super{background:#fef3c7;color:#92400e}
+    .badge-admin{background:#d1fae5;color:#065f46}
+    .badge-pending{background:#fee2e2;color:#991b1b}
+    .badge-rejected{background:#e5e7eb;color:#374151}
+    .perm-tag{font-size:11px;padding:2px 6px;border-radius:4px;background:var(--primary-light);color:var(--primary-color)}
+    .action-btns{display:flex;gap:6px;flex-wrap:wrap}
+    .action-btns button{font-size:12px;padding:4px 10px;border-radius:6px;border:1px solid var(--border-color);background:var(--card-bg);color:var(--text-color);cursor:pointer;transition:all .15s}
+    .action-btns button:hover{background:var(--primary-light);color:var(--primary-color);border-color:var(--primary-color)}
+    .action-btns .danger{color:#dc2626;border-color:#fca5a5}
+    .action-btns .danger:hover{background:#fef2f2;color:#dc2626}
+    .tab-bar{display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--border-color)}
+    .tab-bar button{padding:8px 16px;border:none;background:none;color:var(--text-muted);font-size:14px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
+    .tab-bar button.active{color:var(--primary-color);border-bottom-color:var(--primary-color);font-weight:600}
+    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.15);z-index:2000;align-items:center;justify-content:center}
+    
+    .modal-box{background:#ffffff;border-radius:var(--radius-lg,12px);padding:24px;width:90%;max-width:500px;max-height:80vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.35);border:1px solid rgba(0,0,0,0.08)}
+    .dark-mode .modal-box{background:#1f2733;border-color:#374151;box-shadow:0 8px 40px rgba(0,0,0,0.7)}
+    .modal-box h3{margin:0 0 16px;font-size:16px}
+    .perm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+    .perm-item{display:flex;align-items:center;gap:6px;padding:8px;border:1px solid var(--border-color);border-radius:8px;cursor:pointer;transition:all .15s}
+    .perm-item:hover{border-color:var(--primary-color)}
+    .perm-item.checked{background:var(--primary-light);border-color:var(--primary-color)}
+    .perm-item input{accent-color:var(--primary-color)}
+    @media(max-width:600px){.user-card{flex-direction:column;align-items:flex-start}.action-btns{width:100%}}
+    /* 权限选择网格 */
+  .perm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .perm-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; border-radius: 8px; cursor: pointer;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+    transition: all 0.2s ease;
+  }
+  .perm-item:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.15); }
+  .perm-item.checked {
+    background: var(--primary-color); border-color: var(--primary-color);
+    color: #fff; box-shadow: 0 2px 8px rgba(var(--primary-color-rgb, 59,130,246), 0.3);
+  }
+  .perm-item input[type="checkbox"] { display: none; }
+  .perm-item.checked input[type="checkbox"] { display: inline; }
+  .perm-info { grid-column: 1/-1; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; padding: 6px 10px; background: rgba(255,255,255,0.03); border-radius: 6px; }
+</style>
+</head>
+<body class="<%= darkMode ? 'dark-mode' : '' %>">
+  <div class="container">
+    <header class="header">
+      <div class="logo"><i class="fas fa-users-cog"></i> <span>用户管理</span></div>
+      <div class="header-actions">
+        <a href="/" class="btn btn-secondary"><i class="fas fa-home"></i> 返回</a>
+        <a href="/logout" class="btn btn-secondary"><i class="fas fa-sign-out-alt"></i> 退出</a>
+      </div>
+    </header>
+
+    <div class="tab-bar">
+      <button class="active" onclick="switchTab('pending')">待审核 <span id="pendingCount">0</span></button>
+      <button onclick="switchTab('all')">全部用户</button>
+    </div>
+
+    <div id="pendingList"></div>
+    <div id="allList" style="display:none"></div>
+
+  </div>
+
+<script>
+let allUsers = [], pendingUsers = [], permLabels = {};
+let currentPermUserId = '', currentPermPerms = [];
+let currentResetPwdUserId = '';
+
+async function loadData() {
+  try {
+    const [usersRes, permRes] = await Promise.all([
+      fetch('/api/users').then(r => { if (!r.ok) throw new Error('用户API返回 ' + r.status); return r.json(); }),
+      fetch('/api/permissions').then(r => r.json()),
+    ]);
+    allUsers = Array.isArray(usersRes) ? usersRes : [];
+    permLabels = permRes.labels || {};
+    pendingUsers = allUsers.filter(u => u.status === 'pending');
+    document.getElementById('pendingCount').textContent = pendingUsers.length;
+    renderPending();
+    renderAll();
+  } catch(e) {
+    console.error('loadData失败:', e);
+    document.getElementById('allList').innerHTML = '<div style="text-align:center;padding:40px;color:#dc2626"><i class="fas fa-exclamation-triangle" style="font-size:2rem;display:block;margin-bottom:8px"></i>加载失败: ' + e.message + '<br><small>请确保已用超级管理员账号登录</small></div>';
+  }
+}
+
+function renderPending() {
+  const el = document.getElementById('pendingList');
+  if (!pendingUsers.length) {
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)"><i class="fas fa-check-circle" style="font-size:2rem;display:block;margin-bottom:8px"></i>暂无待审核用户</div>';
+    return;
+  }
+  el.innerHTML = pendingUsers.map(u => `
+    <div class="user-card" id="user-${u.id}">
+      <div class="user-avatar">${(u.name||u.username)[0]}</div>
+      <div class="user-info">
+        <div class="name">${u.name} <span style="color:var(--text-muted);font-weight:normal;font-size:13px">(${u.username})</span></div>
+        <div class="meta"><i class="fas fa-phone"></i> ${u.phone} · <i class="fas fa-clock"></i> ${new Date(u.createdAt).toLocaleString('zh-CN')}</div>
+      </div>
+      <div class="action-btns">
+        <button onclick="approveUser('${u.id}','${u.username}')"><i class="fas fa-check"></i> 通过</button>
+        <button class="danger" onclick="rejectUser('${u.id}','${u.username}')"><i class="fas fa-times"></i> 拒绝</button>
+      </div>
+    </div>`).join('');
+}
+
+function renderAll() {
+  const el = document.getElementById('allList');
+  const approved = allUsers.filter(u => u.status === 'approved');
+  if (!approved.length) {
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)"><i class="fas fa-users" style="font-size:2rem;display:block;margin-bottom:8px"></i>暂无已审核用户</div>';
+    return;
+  }
+  el.innerHTML = approved.map(u => {
+    const isSuper = u.role === 'superadmin';
+    const badge = isSuper ? '<span class="badge badge-super">超级管理员</span>' : '<span class="badge badge-admin">管理员</span>';
+    const permTags = (u.permissions||[]).map(p => '<span class="perm-tag">' + (permLabels[p]||p) + '</span>').join('');
+        const permJson = JSON.stringify(u.permissions||[]).replace(/"/g, '&quot;');
+const actions = isSuper ? '' : `
+      <button onclick="openPermModal('${u.id}','${u.username}',${permJson})"><i class="fas fa-key"></i> 权限</button>
+      <button onclick="openResetPwdModal('${u.id}','${u.username}')"><i class="fas fa-lock"></i> 重置密码</button>
+      <button class="danger" onclick="deleteUser('${u.id}','${u.username}')"><i class="fas fa-trash-alt"></i></button>`;
+    return `
+    <div class="user-card" id="user-${u.id}">
+      <div class="user-avatar">${(u.name||u.username)[0]}</div>
+      <div class="user-info">
+        <div class="name">${u.name} <span style="color:var(--text-muted);font-weight:normal;font-size:13px">(${u.username})</span> ${badge}</div>
+        <div class="meta"><i class="fas fa-phone"></i> ${u.phone} · 审核于 ${u.approvedAt ? new Date(u.approvedAt).toLocaleString('zh-CN') : '-'}</div>
+        <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">${permTags || '<span style="font-size:12px;color:var(--text-muted)">暂无权限</span>'}</div>
+      </div>
+      <div class="action-btns">${actions}</div>
+    </div>`;
+  }).join('');
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('pendingList').style.display = tab === 'pending' ? '' : 'none';
+  document.getElementById('allList').style.display = tab === 'all' ? '' : 'none';
+}
+
+async function approveUser(id, username) {
+  if (!confirm('审核通过 ' + username + '？')) return;
+  const res = await fetch('/api/users/' + id + '/approve', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({permissions:[]}) });
+  if (res.ok) { loadData(); } else { alert('操作失败'); }
+}
+
+async function rejectUser(id, username) {
+  if (!confirm('拒绝 ' + username + ' 的注册申请？')) return;
+  const res = await fetch('/api/users/' + id + '/reject', { method:'POST' });
+  if (res.ok) { loadData(); } else { alert('操作失败'); }
+}
+
+async function deleteUser(id, username) {
+  if (!confirm('确认删除用户 ' + username + '？此操作不可撤销。')) return;
+  const res = await fetch('/api/users/' + id, { method:'DELETE' });
+  if (res.ok) { loadData(); } else { alert('操作失败'); }
+}
+
+function openPermModal(id, username, perms) {
+  console.log('openPermModal:', id, username, perms);
+  currentPermUserId = id;
+  currentPermPerms = Array.isArray(perms) ? perms.slice() : [];
+  document.getElementById('permUsername').textContent = username;
+  const grid = document.getElementById('permGrid');
+  const manageable = Object.entries(permLabels).filter(([k]) => !['upload','download','view_shared'].includes(k));
+  grid.innerHTML = '<div style="grid-column:1/-1;font-size:12px;color:var(--text-muted);margin-bottom:4px"><i class="fas fa-info-circle"></i> 上传、下载、查看共享 为所有用户基础权限，无需分配</div>' +
+  manageable.map(([key, label]) => {
+    const checked = currentPermPerms.includes(key);
+    const checkedAttr = checked ? ' checked' : '';
+    const checkedClass = checked ? ' checked' : '';
+    return '<label class="perm-item' + checkedClass + '" onclick="togglePerm(this,\''+key+'\')"><input type="checkbox"' + checkedAttr + '><span>'+label+'</span></label>';
+  }).join('');
+  const modal = document.getElementById('permModal');
+  modal.style.display = 'flex';
+  console.log('modal displayed, grid items:', grid.querySelectorAll('.perm-item').length);
+}
+
+function togglePerm(el, key) {
+  const cb = el.querySelector('input');
+  cb.checked = !cb.checked;
+  el.classList.toggle('checked', cb.checked);
+  if (cb.checked) { if (!currentPermPerms.includes(key)) currentPermPerms.push(key); }
+  else { currentPermPerms = currentPermPerms.filter(p => p !== key); }
+}
+
+function closePermModal() { document.getElementById('permModal').style.display = 'none'; }
+
+async function savePerm() {
+  console.log('savePerm:', currentPermUserId, currentPermPerms);
+  if (!currentPermUserId) { alert('未选择用户'); return; }
+  try {
+    const res = await fetch('/api/users/' + currentPermUserId + '/permissions', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ permissions: currentPermPerms })
+    });
+    const data = await res.json();
+    console.log('savePerm response:', res.status, data);
+    if (res.ok) { closePermModal(); await loadData(); } else { alert('保存失败: ' + (data.error || '未知错误')); }
+  } catch(e) { console.error('savePerm error:', e); alert('保存出错: ' + e.message); }
+}
+
+function openResetPwdModal(id, username) {
+  currentResetPwdUserId = id;
+  document.getElementById('resetPwdUsername').textContent = username;
+  document.getElementById('newPwdInput').value = '';
+  document.getElementById('resetPwdModal').style.display = 'flex';
+}
+function closeResetPwdModal() { document.getElementById('resetPwdModal').style.display = 'none'; }
+async function saveResetPwd() {
+  const pwd = document.getElementById('newPwdInput').value;
+  if (!pwd || pwd.length < 6) return alert('密码至少6个字符');
+  const res = await fetch('/api/users/' + currentResetPwdUserId + '/reset-password', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ newPassword: pwd })
+  });
+  if (res.ok) { closeResetPwdModal(); alert('密码已重置'); } else { alert('操作失败'); }
+}
+
+loadData();
+</script>
+
+
+  <!-- 权限编辑弹窗 -->
+  <div class="modal-overlay" id="permModal">
+    <div class="modal-box">
+      <h3><i class="fas fa-key"></i> 分配权限 - <span id="permUsername"></span></h3>
+      <div class="perm-grid" id="permGrid"></div>
+      <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="closePermModal()">取消</button>
+        <button class="btn btn-primary" onclick="savePerm()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 重置密码弹窗 -->
+  <div class="modal-overlay" id="resetPwdModal">
+    <div class="modal-box">
+      <h3><i class="fas fa-key"></i> 重置密码 - <span id="resetPwdUsername"></span></h3>
+      <div class="form-group">
+        <label>新密码</label>
+        <input type="password" id="newPwdInput" placeholder="至少6个字符" minlength="6">
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="closeResetPwdModal()">取消</button>
+        <button class="btn btn-primary" onclick="saveResetPwd()">确认重置</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    var pm = document.getElementById('permModal');
+    var rm = document.getElementById('resetPwdModal');
+    if (pm && pm.style.display === 'flex') { closePermModal(); e.preventDefault(); }
+    if (rm && rm.style.display === 'flex') { closeResetPwdModal(); e.preventDefault(); }
+  }
+});
+</script>
+</body>
+</html>

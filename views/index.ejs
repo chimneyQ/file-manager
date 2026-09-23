@@ -1,0 +1,580 @@
+<%
+  // 新建文件夹按钮的显示条件：与服务端 /mkdir 的实际权限一致
+  //   —— 有 create_folder 权限，或已登录且当前就在自己的私有空间（含虚拟 users 根）。
+  const canCreateFolderBtn = (typeof canCreateFolderHere !== 'undefined')
+    ? canCreateFolderHere
+    : (typeof canCreateFolder !== 'undefined' ? canCreateFolder : false);
+%>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文件管理器</title>
+  <link rel="stylesheet" href="/css/style.css">
+
+
+  <link rel="stylesheet" href="/css/fontawesome.min.css">
+</head>
+<body class="<%= darkMode ? 'dark-mode' : '' %>">
+  <div class="container">
+    <!-- 头部 -->
+    <header class="header">
+      <div class="logo">
+        <i class="fas fa-folder-open"></i>
+        <span>文件管理器</span>
+      </div>
+      <div class="header-actions">
+        <!-- 深色模式开关 -->
+        <% if (features.enableDarkMode) { %>
+          <button class="dark-mode-toggle" id="darkModeToggle" title="切换深色模式 (Ctrl+D)">
+            <i class="fas <%= darkMode ? 'fa-sun' : 'fa-moon' %>"></i>
+          </button>
+        <% } %>
+        
+        <% if (isAdmin || isUser) { %>
+          <span class="admin-badge" title="当前用户"><i class="fas fa-user"></i> <%= userName %> <% if (isSuperAdmin) { %><span style="color:#f59e0b">· 超级管理员</span><% } else if (userRole === 'admin') { %><span style="color:#22c55e">· 管理员</span><% } %></span><% if (isSuperAdmin || canManageUsers) { %><a href="/admin/users" class="btn btn-secondary" style="font-size:13px"><i class="fas fa-users-cog"></i> 用户管理</a><% } %>
+          <% if (canViewLogs) { %>
+          <a href="/logs" class="btn btn-secondary">
+            <i class="fas fa-clipboard-list"></i> 访问日志
+          </a>
+          <% } %>
+          <button class="btn btn-secondary" onclick="showChangePasswordModal()">
+            <i class="fas fa-key"></i> 修改密码
+          </button>
+          <% if (canCreateFolderBtn) { %>
+          <button class="btn btn-secondary" onclick="showNewFolderModal()">
+            <i class="fas fa-folder-plus"></i> 新建文件夹
+          </button>
+          <% } %>
+          <a href="/logout" class="btn btn-secondary">
+            <i class="fas fa-sign-out-alt"></i> 退出
+          </a>
+        <% } else if (isUser) { %>
+          <span class="admin-badge" title="当前用户"><i class="fas fa-user"></i> <%= userName %> <span style="color:#22c55e">· 已登录</span></span>
+          <% if (canCreateFolderBtn) { %>
+          <button class="btn btn-secondary" onclick="showNewFolderModal()">
+            <i class="fas fa-folder-plus"></i> 新建文件夹
+          </button>
+          <% } %>
+          <a href="/logout" class="btn btn-secondary">
+            <i class="fas fa-sign-out-alt"></i> 退出
+          </a>
+        <% } else { %>
+          <a href="/login" class="btn btn-primary">
+            <i class="fas fa-lock"></i> 登录
+          </a>
+        <% } %>
+      </div>
+    </header>
+
+    <!-- 搜索栏 -->
+    <% if (features.enableSearch) { %>
+    <div class="search-bar">
+      <i class="fas fa-search" style="color: var(--text-muted);"></i>
+      <input type="text" id="searchInput" placeholder="搜索文件... (Ctrl+K)" 
+             onkeydown="if(event.key==='Enter') performSearch(this.value)">
+      <button class="btn btn-primary" onclick="performSearch(document.getElementById('searchInput').value)">
+        <i class="fas fa-search"></i> 搜索
+      </button>
+    </div>
+    <% } %>
+
+    <!-- 面包屑导航 -->
+    <nav class="breadcrumb">
+      <a href="/" class="breadcrumb-item">
+        <i class="fas fa-home"></i> 首页
+      </a>
+      <% breadcrumb.forEach((item, index) => { %>
+        <% const path = breadcrumb.slice(0, index + 1).join('/'); %>
+        <span class="breadcrumb-separator">/</span>
+        <a href="/?path=<%= encodeURIComponent(path) %>" class="breadcrumb-item"><%= item %></a>
+      <% }); %>
+    </nav>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+      <% if (typeof currentPath !== 'undefined' && currentPath) { %>
+      <a href="/?path=<%= encodeURIComponent(currentPath.split('/').slice(0,-1).join('/')) %>" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> 返回上级
+      </a>
+      <% } %>
+      <button class="btn btn-primary" onclick="showUploadModal()">
+        <i class="fas fa-cloud-upload-alt"></i> 上传文件
+      </button>
+      <% if (canRecycle && features.enableRecycleBin) { %>
+      <button class="btn btn-recycle-bin" onclick="showRecycleBin()">
+        <i class="fas fa-trash-restore"></i> 回收站
+      </button>
+      <% } %>
+      
+      <!-- 批量操作 -->
+      <% if (features.enableBatchDelete && canDelete) { %>
+      <div class="batch-actions" id="batchActions" style="display:none;">
+        <span id="selectionCount"></span>
+        <button class="btn btn-danger btn-sm" id="batchDeleteBtn" onclick="batchDelete()">
+          <i class="fas fa-trash-alt"></i> 批量删除
+        </button>
+        <button class="btn btn-secondary btn-sm" id="clearSelectionBtn" onclick="clearSelection()">
+          <i class="fas fa-times"></i> 取消选择
+        </button>
+      </div>
+      <% } %>
+      
+      <div class="toolbar-info">
+        <span id="itemCount">
+          <%= items.length %> 个项目<%= totalPages > 1 ? ` (第 ${page}/${totalPages} 页)` : '' %>
+        </span>
+      </div>
+    </div>
+
+    <!-- 搜索结果 -->
+    <div id="searchResults" class="search-results" style="display:none; margin-bottom:15px;"></div>
+
+    <!-- 文件列表 -->
+    <div class="file-list" id="mainFileList">
+      <% if (items.length === 0) { %>
+        <div class="empty-state">
+          <i class="fas fa-folder-open"></i>
+          <p>此文件夹为空</p>
+        </div>
+      <% } else { %>
+        <table class="file-table">
+          <thead>
+            <tr>
+              <% if (features.enableBatchDelete && canDelete) { %>
+              <th class="col-select">
+                <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)">
+              </th>
+              <% } %>
+              <th class="col-name">名称</th>
+              <th class="col-size">大小</th>
+              <th class="col-date">修改日期</th>
+              <th class="col-downloads" title="下载次数"><i class="fas fa-download"></i> 下载</th>
+              <th class="col-actions">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% items.forEach(item => { %>
+              <% const iconKey = item.type === 'folder' ? 'folder' : (getFileIcon(item.ext) === 'pdf' ? 'file-pdf' : getFileIcon(item.ext) === 'doc' ? 'file-word' : getFileIcon(item.ext) === 'xls' ? 'file-excel' : getFileIcon(item.ext) === 'ppt' ? 'file-powerpoint' : getFileIcon(item.ext) === 'image' ? 'file-image' : getFileIcon(item.ext) === 'video' ? 'file-video' : getFileIcon(item.ext) === 'audio' ? 'file-audio' : getFileIcon(item.ext) === 'archive' ? 'file-archive' : getFileIcon(item.ext) === 'code' ? 'file-code' : 'file'); %>
+              <tr class="file-row" data-type="<%= item.type %>" data-path="<%= item.path %>"
+                  <% if (features.enableBatchDelete && canDelete) { %>
+                  onclick="event.stopPropagation();"
+                  <% } %>
+              >
+                <% if (features.enableBatchDelete && canDelete) { %>
+                <td class="col-select" onclick="event.stopPropagation()">
+                  <input type="checkbox"
+                         onchange="toggleItemSelection('<%= item.path %>', '<%= item.type %>')">
+                </td>
+                <% } %>
+                <td class="col-name">
+                  <% if (item.type === 'folder') { %>
+                    <a href="/?path=<%= encodeURIComponent(item.path) %>" class="file-link">
+                      <i class="fas fa-folder file-icon folder-icon"></i>
+                      <span class="file-name"><%= item.name %></span>
+                    </a>
+                  <% } else { %>
+                    <span class="file-link">
+                      <i class="fas fa-<%= iconKey %> file-icon <%= getFileIcon(item.ext) %>-icon"></i>
+                      <span class="file-name"><%= item.name %></span>
+                    </span>
+                  <% } %>
+                </td>
+                <td class="col-size"><%= item.type === 'folder' ? '-' : formatSize(item.size) %></td>
+                <td class="col-date"><%= formatDate(item.modified) %></td>
+                <td class="col-downloads">
+                  <% if (item.type === 'file') { %>
+                    <span class="download-badge"><%= item.downloadCount || 0 %></span>
+                  <% } else { %>
+                    -
+                  <% } %>
+                </td>
+                <td class="col-actions">
+                  <% if (item.type === 'file') { %>
+                    <a href="/download/<%= item.path %>" class="action-btn" title="下载">
+                      <i class="fas fa-download"></i>
+                    </a>
+                    <% const previewable = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.pdf', '.txt', '.md', '.mp4', '.webm', '.mp3', '.wav', '.ogg'].includes(item.ext); %>
+                    <% if (previewable) { %>
+                      <button class="action-btn" onclick='previewItem(<%- JSON.stringify(item.path) %>, "<%- item.ext %>")' title="预览">
+                        <i class="fas fa-eye"></i>
+                      </button>
+                    <% } %>
+                  <% } %>
+                  <% if (canDelete) { %>
+                    <button class="action-btn danger" onclick='deleteItem(<%- JSON.stringify(item.path) %>, "<%- item.type %>")' title="删除">
+                      <i class="fas fa-trash-alt"></i>
+                    </button>
+                  <% } %>
+                  <% if (canShare && item.type === 'file' && features.enableShareLink) { %>
+                    <button class="action-btn" onclick='shareItem(<%- JSON.stringify(item.path) %>)' title="分享">
+                      <i class="fas fa-share-alt"></i>
+                    </button>
+                  <% } %>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+
+    <!-- 分页 -->
+    <% if (totalPages > 1) { %>
+    <div class="pagination">
+      <% if (page > 1) { %>
+        <a href="?path=<%= encodeURIComponent(currentPath) %>&page=<%= page - 1 %>">
+          <i class="fas fa-chevron-left"></i> 上一页
+        </a>
+      <% } else { %>
+        <span class="disabled"><i class="fas fa-chevron-left"></i> 上一页</span>
+      <% } %>
+      
+      <% for (let i = Math.max(1, page - 2); i <= Math.min(totalPages, page + 2); i++) { %>
+        <% if (i === page) { %>
+          <span class="current"><%= i %></span>
+        <% } else { %>
+          <a href="?path=<%= encodeURIComponent(currentPath) %>&page=<%= i %>"><%= i %></a>
+        <% } %>
+      <% } %>
+      
+      <% if (page < totalPages) { %>
+        <a href="?path=<%= encodeURIComponent(currentPath) %>&page=<%= page + 1 %>">
+          下一页 <i class="fas fa-chevron-right"></i>
+        </a>
+      <% } else { %>
+        <span class="disabled">下一页 <i class="fas fa-chevron-right"></i></span>
+      <% } %>
+    </div>
+    <% } %>
+  </div>
+
+  <!-- 上传模态框 -->
+  <div id="uploadModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i class="fas fa-cloud-upload-alt"></i> 上传文件</h3>
+        <button class="modal-close" onclick="closeUploadModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="upload-area" id="uploadArea">
+          <label for="fileInput" style="display:block;cursor:pointer;width:100%;height:100%">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <p>拖拽文件到此处或点击选择文件</p>
+          </label>
+          <input type="file" id="fileInput" multiple style="display:none">
+        </div>
+        <div class="upload-path">
+          <div class="upload-path-row">
+            <label>上传到：</label>
+            <div class="folder-tree-container">
+            <div class="folder-tree-header" onclick="toggleFolderTree()">
+              <span id="selectedFolderName">当前目录</span>
+              <i class="fas fa-chevron-down" id="folderTreeIcon"></i>
+            </div>
+            <div class="folder-tree" id="folderTree" style="display:none;"></div>
+          </div>
+          </div>
+          <% if (canCreateFolderBtn) { %>
+          <button class="btn btn-secondary btn-sm" onclick="createFolderInUpload()" style="margin-top:8px;width:100%;">
+            <i class="fas fa-folder-plus"></i> 新建文件夹
+          </button>
+          <% } %>
+          <input type="hidden" id="uploadPath" value="<%= typeof uploadPath !== 'undefined' ? uploadPath : currentPath %>">
+        </div>
+        <div id="uploadList" class="upload-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeUploadModal()">取消</button>
+        <button class="btn btn-primary" onclick="startUpload()" id="uploadBtn" disabled>
+          <i class="fas fa-upload"></i> 开始上传
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新建文件夹模态框 -->
+  <div id="newFolderModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i class="fas fa-folder-plus"></i> 新建文件夹</h3>
+        <button class="modal-close" onclick="closeNewFolderModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>文件夹名称：</label>
+          <input type="text" id="folderName" placeholder="输入文件夹名称">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeNewFolderModal()">取消</button>
+        <button class="btn btn-primary" onclick="createFolder()">
+          <i class="fas fa-check"></i> 创建
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 修改密码模态框 -->
+  <div id="changePasswordModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i class="fas fa-key"></i> 修改密码</h3>
+        <button class="modal-close" onclick="closeChangePasswordModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="changePasswordForm" onsubmit="event.preventDefault(); submitChangePassword();">
+          <input type="text" name="username" value="admin" style="display:none" autocomplete="username">
+          <div class="form-group">
+            <label for="oldPassword">当前密码：</label>
+            <input type="password" id="oldPassword" placeholder="请输入当前密码" autocomplete="current-password">
+          </div>
+          <div class="form-group">
+            <label for="newPassword">新密码：</label>
+            <input type="password" id="newPassword" placeholder="至少 6 个字符" autocomplete="new-password">
+            <small class="form-hint">建议包含大小写字母、数字、特殊字符</small>
+          </div>
+          <div class="form-group">
+            <label for="confirmPassword">确认新密码：</label>
+            <input type="password" id="confirmPassword" placeholder="再次输入新密码" autocomplete="new-password">
+          </div>
+          <div id="changePasswordMessage" class="form-message" style="display:none;"></div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeChangePasswordModal()">取消</button>
+        <button class="btn btn-primary" id="changePasswordBtn" onclick="submitChangePassword()">
+          <i class="fas fa-check"></i> 确认修改
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 回收站模态框 -->
+  <div id="recycleBinModal" class="modal">
+    <div class="modal-content" style="max-width:700px;">
+      <div class="modal-header">
+        <h3><i class="fas fa-trash-restore"></i> 回收站</h3>
+        <button class="modal-close" onclick="closeRecycleBin()">&times;</button>
+      </div>
+      <div class="modal-body" id="recycleBinList">
+        <div class="empty-state"><i class="fas fa-trash-alt"></i><p>加载中...</p></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeRecycleBin()">关闭</button>
+        <button class="btn btn-danger" onclick="clearRecycleBin()">
+          <i class="fas fa-trash-alt"></i> 清空回收站
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 分享链接模态框 -->
+  <div id="shareLinkModal" class="modal">
+    <div class="modal-content" style="max-width:550px;">
+      <div class="modal-header">
+        <h3><i class="fas fa-share-alt"></i> 分享链接</h3>
+        <button class="modal-close" onclick="closeShareLinkModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="margin-bottom:12px;">
+          <label style="font-size:0.9rem;display:block;margin-bottom:4px;"><i class="fas fa-clock"></i> 有效期：</label>
+          <select id="shareExpireSelect" style="width:100%;padding:8px 10px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-color);color:var(--text-color);">
+            <option value="1">1 小时</option>
+            <option value="6">6 小时</option>
+            <option value="12">12 小时</option>
+            <option value="24" selected>24 小时（默认）</option>
+            <option value="72">3 天</option>
+            <option value="168">7 天</option>
+            <option value="720">30 天</option>
+          </select>
+        </div>
+        <div class="share-link-box">
+          <input type="text" id="shareLinkInput" readonly placeholder="生成中...">
+          <button class="btn btn-primary" id="shareLinkCopyBtn" onclick="copyShareLink()" disabled>
+            <i class="fas fa-copy"></i> 复制
+          </button>
+        </div>
+        <div class="share-link-expire" id="shareLinkExpire"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeShareLinkModal()">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 图片预览模态框 -->
+  <div id="previewModal" class="modal preview-modal">
+    <div class="modal-content preview-content">
+      <button class="modal-close preview-close" onclick="closePreview()">&times;</button>
+      <img id="previewImage" src="" alt="预览">
+    </div>
+  </div>
+
+  <!-- 音频预览模态框 -->
+  <div id="audioPreviewModal" class="modal audio-preview-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i class="fas fa-music"></i> 音频预览</h3>
+        <button class="modal-close" onclick="closePreview()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <audio id="previewAudio" controls></audio>
+      </div>
+    </div>
+  </div>
+
+  <!-- 文档预览模态框 -->
+  <div id="docPreviewModal" class="modal doc-preview-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i class="fas fa-file-alt"></i> 文档预览</h3>
+        <button class="modal-close" onclick="closePreview()">&times;</button>
+      </div>
+      <iframe id="docPreviewFrame" src=""></iframe>
+    </div>
+  </div>
+
+  <script src="/js/app.js?v=3"></script>
+  
+  <!-- 获取并发送外网IP -->
+  <script>
+    // 外网IP获取（localStorage持久化 + 最大重试次数）
+    const IP_CACHE_KEY = 'fm_cached_external_ip';
+    const IP_CACHE_MAX_AGE = 30 * 60 * 1000; // 30分钟缓存有效期
+    const MAX_RETRIES = 3;
+    let ipRetryCount = 0;
+    let ipSending = false;
+    
+    // 从localStorage恢复缓存
+    function getCachedIp() {
+      try {
+        const raw = localStorage.getItem(IP_CACHE_KEY);
+        if (!raw) return null;
+        const { ip, ts } = JSON.parse(raw);
+        if (ip && Date.now() - ts < IP_CACHE_MAX_AGE) return ip;
+        localStorage.removeItem(IP_CACHE_KEY);
+      } catch {}
+      return null;
+    }
+    
+    function setCachedIp(ip) {
+      try { localStorage.setItem(IP_CACHE_KEY, JSON.stringify({ ip, ts: Date.now() })); } catch {}
+    }
+    
+    async function fetchExternalIp() {
+      if (ipSending) return;
+      
+      // 优先用本地缓存
+      const cached = getCachedIp();
+      if (cached) {
+        sendExternalIp(cached);
+        return;
+      }
+      
+      // 已达最大重试次数，不再请求
+      if (ipRetryCount >= MAX_RETRIES) return;
+      ipRetryCount++;
+      ipSending = true;
+      
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const response = await fetch('/api/server-external-ip', {
+          cache: 'no-cache',
+          signal: controller.signal,
+          headers: { 'Accept': 'application/json' }
+        });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const data = await response.json();
+          // 修复：服务端返回 externalIp 字段，不是 ip
+          const extIp = data.externalIp || data.ip;
+          if (extIp && isValidIp(extIp)) {
+            setCachedIp(extIp);
+            sendExternalIp(extIp);
+            ipSending = false;
+            return;
+          }
+        }
+      } catch (err) {}
+      
+      ipSending = false;
+      // 失败时指数退避：5s → 15s → 45s
+      if (ipRetryCount < MAX_RETRIES) {
+        setTimeout(fetchExternalIp, 60000 * Math.pow(3, ipRetryCount));
+      }
+    }
+
+    function isValidIp(ip) {
+      const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+      if (!ipv4Regex.test(ip)) return false;
+      const parts = ip.split('.');
+      return parts.every(part => {
+        const num = parseInt(part, 10);
+        return num >= 0 && num <= 255;
+      });
+    }
+    
+    function sendExternalIp(externalIp) {
+      fetch('/api/set-external-ip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ externalIp }),
+      }).catch(() => {});
+    }
+    
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchExternalIp();
+      
+      // Ctrl+D 切换深色模式
+      document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+          e.preventDefault();
+          document.getElementById('darkModeToggle')?.click();
+        }
+      });
+      
+      // 全选
+      const selectAll = document.getElementById('selectAll');
+      if (selectAll) {
+        selectAll.addEventListener('change', function() {
+          document.querySelectorAll('.file-row input[type="checkbox"]').forEach(cb => {
+            cb.checked = this.checked;
+            const row = cb.closest('.file-row');
+            if (row) {
+              const path = row.dataset.path;
+              const type = row.dataset.type;
+              if (this.checked) selectedItems.add(`${type}:${path}`);
+              else selectedItems.delete(`${type}:${path}`);
+            }
+          });
+          updateSelectionUI();
+        });
+      }
+    });
+    
+    // 初始化文件夹树
+    document.addEventListener('DOMContentLoaded', () => {
+      if (typeof loadFolderTree === 'function') {
+        loadFolderTree();
+      }
+    });
+  </script>
+<script>
+window._dsh_errors = [];
+window.onerror = function(msg, src, line, col, err) {
+  window._dsh_errors.push({msg:msg, line:line, col:col, err:err ? err.message : '' });
+};
+window.addEventListener('error', function(e) {
+  if (e.filename) window._dsh_errors.push({msg:e.message, file:e.filename, line:e.lineno, col:e.colno});
+});
+window.addEventListener('unhandledrejection', function(e) {
+  window._dsh_errors.push({msg:'Promise rejection: ' + (e.reason ? e.reason.message : e.reason)});
+});
+</script>
+<div id="_dsh_jsdebug" style="position:fixed;top:0;right:0;z-index:99999;background:red;color:white;padding:4px 8px;font-size:12px;">JS_NOT_LOADED</div><script>document.addEventListener('DOMContentLoaded', function(){var e=document.getElementById('_dsh_jsdebug');if(e)e.textContent='JS_LOADED_OK';});</script>
+</body>
+</html>

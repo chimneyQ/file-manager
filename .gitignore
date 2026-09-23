@@ -1,0 +1,41 @@
+# 环境变量文件（包含敏感凭据，绝不能提交）
+.env
+.env.local
+.env.*.local
+
+# 运行时配置（前端“修改密码”会写入）
+runtime-config.json
+runtime-config.json.bak
+
+# 备份文件
+*.bak
+*.pre-*.bak
+*.before-*.bak
+
+# 日志（PM2 日志和应用日志都在 D:\Web\logs\，但项目里的也忽略）
+logs-stderr.log
+logs-stdout.log
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 用户数据库（含密码哈希与手机号，绝不能提交）
+data/users.json
+
+# 运行时数据与临时产物
+data/*.bak
+uploads/
+.tmp-*
+_t*.js
+*.pid
+
+# 系统/编辑器
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
