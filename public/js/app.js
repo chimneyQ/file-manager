@@ -85,7 +85,7 @@ container.innerHTML = `
 </thead>
 <tbody>
 ${results.map(item => `
-<tr class="file-row">
+<tr class="file-row" data-type="${item.type}" data-path="${item.path}" onclick="handleFileRowClick(event)">
 <td class="col-name">
 <span class="file-link">
 <i class="fas fa-${item.type === 'folder' ? 'folder' : 'file'} file-icon ${item.type === 'folder' ? 'folder-icon' : getFileIcon(item.ext) + '-icon'}"></i>
@@ -845,7 +845,7 @@ previewAudio(path);
 } else if (ext === '.pdf' || ext === '.txt' || ext === '.md') {
 previewDocument(path);
 } else {
-window.location.href = `/download/${path}`;
+downloadItem(null, path);
 }
 }
 function previewImage(path) {
@@ -945,3 +945,48 @@ if (modal.id === 'recycleBinModal') { recycleBinData = []; }
 }
 });
 });
+
+/* ===== 移动端交互修复 v4 ===== */
+// 整行点击切换目录：仅文件夹行生效；锚点/按钮/复选框走各自逻辑
+function handleFileRowClick(e) {
+  var row = e.currentTarget;
+  if (!row || !row.classList || !row.classList.contains('file-row')) return;
+  if (e.target.closest && e.target.closest('a, button, input, label, .col-select')) return;
+  if (row.dataset.type !== 'folder' || !row.dataset.path) return;
+  window.location.href = '/?path=' + encodeURIComponent(row.dataset.path);
+}
+
+// 下载不跳页：写入隐藏 iframe，移动端点完仍停在当前目录
+function downloadItem(e, path) {
+  if (e) { e.preventDefault(); e.stopPropagation(); }
+  if (!path) return false;
+  var frame = document.getElementById('downloadFrame');
+  if (!frame) {
+    frame = document.createElement('iframe');
+    frame.id = 'downloadFrame';
+    frame.style.display = 'none';
+    frame.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(frame);
+  }
+  frame.src = '/download/' + String(path).replace(/^\/+/, '');
+  return false;
+}
+
+// 捕获阶段兜底：目录整行点击（即使模板被 view cache 缓存、行上没有内联处理器也生效）
+document.addEventListener('click', function (e) {
+  var row = e.target.closest && e.target.closest('tr.file-row');
+  if (!row || row.dataset.type !== 'folder' || !row.dataset.path) return;
+  if (row.getAttribute('onclick')) return; // 模板已挂内联处理器时交给它
+  if (e.target.closest('a, button, input, label, .col-select, .col-actions')) return;
+  e.preventDefault();
+  window.location.href = '/?path=' + encodeURIComponent(row.dataset.path);
+}, true);
+
+// 捕获阶段兜底：任何未挂内联处理器的 /download/ 链接都不再整页跳转
+document.addEventListener('click', function (e) {
+  var a = e.target.closest && e.target.closest('a[href^="/download/"]');
+  if (!a || a.dataset.downloadPath) return;
+  if ((a.getAttribute('onclick') || '').indexOf('downloadItem') >= 0) return; // 同上
+  e.preventDefault();
+  downloadItem(null, a.getAttribute('href').replace(/^\/download\//, ''));
+}, true);

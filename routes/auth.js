@@ -70,6 +70,7 @@ module.exports = function(app, ctx) {
       writeLog(getLogFile(), createLogEntry(req, {
         loginType: user.role === 'superadmin' ? '超级管理员' : '管理员',
         operation: '登录成功', path: '-', fileType: '-',
+        username: user.username, name: user.name || '',
       }));
       res.redirect('/');
     });

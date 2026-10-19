@@ -11,7 +11,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>文件管理器</title>
-  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/style.css?v=4">
 
 
   <link rel="stylesheet" href="/css/fontawesome.min.css">
@@ -158,10 +158,7 @@
             <% items.forEach(item => { %>
               <% const iconKey = item.type === 'folder' ? 'folder' : (getFileIcon(item.ext) === 'pdf' ? 'file-pdf' : getFileIcon(item.ext) === 'doc' ? 'file-word' : getFileIcon(item.ext) === 'xls' ? 'file-excel' : getFileIcon(item.ext) === 'ppt' ? 'file-powerpoint' : getFileIcon(item.ext) === 'image' ? 'file-image' : getFileIcon(item.ext) === 'video' ? 'file-video' : getFileIcon(item.ext) === 'audio' ? 'file-audio' : getFileIcon(item.ext) === 'archive' ? 'file-archive' : getFileIcon(item.ext) === 'code' ? 'file-code' : 'file'); %>
               <tr class="file-row" data-type="<%= item.type %>" data-path="<%= item.path %>"
-                  <% if (features.enableBatchDelete && canDelete) { %>
-                  onclick="event.stopPropagation();"
-                  <% } %>
-              >
+                  onclick="handleFileRowClick(event)">
                 <% if (features.enableBatchDelete && canDelete) { %>
                 <td class="col-select" onclick="event.stopPropagation()">
                   <input type="checkbox"
@@ -192,7 +189,9 @@
                 </td>
                 <td class="col-actions">
                   <% if (item.type === 'file') { %>
-                    <a href="/download/<%= item.path %>" class="action-btn" title="下载">
+                    <a href="/download/<%= item.path %>" class="action-btn" title="下载"
+                       data-download-path="<%= item.path %>"
+                       onclick="return downloadItem(event, this.dataset.downloadPath)">
                       <i class="fas fa-download"></i>
                     </a>
                     <% const previewable = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.pdf', '.txt', '.md', '.mp4', '.webm', '.mp3', '.wav', '.ogg'].includes(item.ext); %>
@@ -436,7 +435,7 @@
     </div>
   </div>
 
-  <script src="/js/app.js?v=3"></script>
+  <script src="/js/app.js?v=4"></script>
   
   <!-- 获取并发送外网IP -->
   <script>

@@ -228,6 +228,7 @@ input, select, textarea { font-family: inherit; color: var(--text-color); }
 .file-row {
   transition: background 0.15s ease, transform 0.15s ease;
 }
+.file-row[data-type="folder"] { cursor: pointer; }
 .file-row:hover { background: var(--primary-light); }
 body.dark-mode .file-row:hover { background: rgba(129,140,248,0.06); }
 

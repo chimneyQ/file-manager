@@ -52,6 +52,10 @@
   </div>
   <% } %>
 
+  <div class="download-ranking" id="regionCard" style="display:none">
+    <h4><i class="fas fa-globe-asia"></i> 地域分布 <span style="font-weight:400;font-size:12px;color:#909399;">（点击地区 = 只看该地区的访问）</span></h4>
+    <div class="ranking-list" id="regionList"></div>
+  </div>
   <section class="log-toolbar">
     <div class="toolbar-filters">
       <select id="dateFilter" onchange="changeDate(this.value)">
@@ -69,14 +73,16 @@
         <% }); %>
       </select>
       <% } %>
-      <input type="search" id="searchBox" placeholder="搜索 IP 或路径..." oninput="filterBySearch(this.value)">
+      <input type="search" id="searchBox" placeholder="搜索 IP 或路径（回车全量搜索）" value="<%= q %>" oninput="filterBySearch(this.value)" onkeydown="if(event.key==='Enter'){searchAll();}">
+      <label class="only-error-toggle" style="display:inline-flex;align-items:center;gap:6px;padding:0 10px;height:38px;border:1px solid #dcdfe6;border-radius:8px;font-size:13px;cursor:pointer;user-select:none;white-space:nowrap;"><input type="checkbox" style="margin:0;cursor:pointer;" <%= onlyError ? 'checked' : '' %> onchange="toggleOnlyError(this.checked)"> 只看异常</label>
+      <label class="only-error-toggle" style="display:inline-flex;align-items:center;gap:6px;padding:0 10px;height:38px;border:1px solid #dcdfe6;border-radius:8px;font-size:13px;cursor:pointer;user-select:none;white-space:nowrap;"><input type="checkbox" style="margin:0;cursor:pointer;" <%= showApi ? 'checked' : '' %> onchange="toggleShowApi(this.checked)"> 显示接口请求<% if (apiCount > 0 && !showApi) { %><span style="color:#f56c6c;margin-left:4px;">已隐藏 <%= apiCount %> 条</span><% } %></label>
     </div>
     <div class="toolbar-actions">
       <button onclick="expandAll()"><i class="fas fa-expand-alt"></i> 展开</button>
       <button onclick="collapseAll()"><i class="fas fa-compress-alt"></i> 折叠</button>
       <button onclick="location.reload()"><i class="fas fa-sync-alt"></i> 刷新</button>
-      <a href="/api/logs/export?date=<%= dateFilter %>&format=csv" class="export-btn csv"><i class="fas fa-file-csv"></i> CSV</a>
-      <a href="/api/logs/export?date=<%= dateFilter %>&format=json" class="export-btn json"><i class="fas fa-file-code"></i> JSON</a>
+      <a href="/api/logs/export?<%= exportQuery %>&format=csv" class="export-btn csv"><i class="fas fa-file-csv"></i> CSV</a>
+      <a href="/api/logs/export?<%= exportQuery %>&format=json" class="export-btn json"><i class="fas fa-file-code"></i> JSON</a>
     </div>
   </section>
 
@@ -104,31 +110,29 @@
       </div>
     <% } else { %>
       <%
-        var TIME_WINDOW = 60 * 60 * 1000;
+        // 按 IP 折叠：一个 IP 一张卡，卡内是它在当前筛选下的全部操作（不再按 1 小时窗口切分）
         var sortedLogs = [...logs].sort(function(a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
-        var sessions = [];
-        var currentSession = null;
+        var groupMap = new Map();
         sortedLogs.forEach(function(log, index) {
           var logTime = new Date(log.timestamp).getTime();
           var internalIp = log.internalIp || '-';
-          var externalIp = log.externalIp || '-';
+          var externalIp = (log.externalIp && log.externalIp !== '-' && log.externalIp !== 'unknown') ? log.externalIp : '-';
           var deviceKey = externalIp !== '-' ? externalIp : internalIp;
-          var needNewSession = !currentSession ||
-            currentSession.deviceKey !== deviceKey ||
-            currentSession.endTime - logTime > TIME_WINDOW;
-          if (needNewSession) {
-            if (currentSession) sessions.push(currentSession);
-            currentSession = {
-              deviceKey: deviceKey, internalIp: internalIp, externalIp: externalIp,
-              logs: [], index: sessions.length, endTime: logTime
-            };
+          var g = groupMap.get(deviceKey);
+          if (!g) {
+            g = { deviceKey: deviceKey, internalIp: internalIp, externalIp: externalIp,
+                  logs: [], index: 0, endTime: logTime, startTime: logTime };
+            groupMap.set(deviceKey, g);
           }
-          currentSession.endTime = Math.max(currentSession.endTime, logTime);
-          currentSession.logs.push(Object.assign({}, log, { originalIndex: index }));
-          if (log.externalIp && log.externalIp !== '-') currentSession.externalIp = log.externalIp;
+          g.endTime = Math.max(g.endTime, logTime);
+          g.startTime = Math.min(g.startTime, logTime);
+          g.logs.push(Object.assign({}, log, { originalIndex: index }));
+          if (internalIp !== '-') g.internalIp = internalIp;
         });
-        if (currentSession) sessions.push(currentSession);
+        var sessions = [];
+        groupMap.forEach(function(g) { sessions.push(g); });
         sessions.sort(function(a, b) { return b.endTime - a.endTime; });
+        sessions.forEach(function(g, i) { g.index = i; });
       %>
 
       <% sessions.forEach(function(session) { %>
@@ -142,7 +146,7 @@
         <% var isInternalNetwork = session.internalIp && (session.internalIp.startsWith('10.') || session.internalIp.startsWith('192.168.') || session.internalIp.startsWith('172.')); %>
         <% var showExt = session.externalIp && session.externalIp !== '-' && session.externalIp !== 'unknown'; %>
 
-        <div class="session-card" data-session="<%= session.index %>">
+        <div class="session-card" data-session="<%= session.index %>" data-ip="<%= session.deviceKey %>">
           <div class="session-header" onclick="toggleSession(<%= session.index %>)">
             <i class="fas fa-chevron-right session-expand"></i>
             <div class="session-info">
@@ -177,15 +181,20 @@
               session.logs.forEach(function(log) {
                 var op = log.operation || log.method;
                 var p = log.path || '-';
+                var un = log.username || '';
+                var nm = log.name || '';
                 var last = groupedLogs[groupedLogs.length - 1];
-                if (last && last.op === op && last.path === p) { last.count++; last.latestTime = log.timestamp; }
-                else { groupedLogs.push({ op: op, path: p, count: 1, latestTime: log.timestamp, externalIp: log.externalIp }); }
+                if (last && last.op === op && last.path === p && last.un === un && last.nm === nm) { last.count++; last.latestTime = log.timestamp; }
+                else { groupedLogs.push({ op: op, path: p, un: un, nm: nm, count: 1, latestTime: log.timestamp, externalIp: log.externalIp }); }
               });
             %>
             <% groupedLogs.forEach(function(item) { %>
               <div class="detail-row">
                 <span class="detail-time"><%= item.latestTime %></span>
                 <span class="detail-op op-badge <%= opClass(item.op) %>"><%= item.op %><% if (item.count > 1) { %> <span class="count-badge">×<%= item.count %></span><% } %></span>
+                <% if (item.un || item.nm) { %>
+                  <span class="detail-user" style="font-size:12px;color:#409eff;white-space:nowrap;"><i class="fas fa-user"></i> <%= item.un %><% if (item.nm) { %>（<%= item.nm %>）<% } %></span>
+                <% } %>
                 <span class="detail-path"><%= item.path %></span>
                 <% if (item.externalIp && item.externalIp !== '-' && item.externalIp !== 'unknown') { %>
                   <span class="detail-ip hide-mobile">[<%= item.externalIp %>]</span>
@@ -214,6 +223,8 @@
               <th>路径</th>
               <th class="hide-mobile">内网 IP</th>
               <th class="hide-mobile">外网 IP</th>
+              <th class="hide-mobile">地域</th>
+              <th class="hide-mobile">登录用户</th>
               <th>登录类型</th>
             </tr>
           </thead>
@@ -222,9 +233,10 @@
               var groupedLogs = [];
               [...logs].sort(function(a, b) { return new Date(b.timestamp) - new Date(a.timestamp); }).forEach(function(log) {
                 var op = log.operation || log.method, p = log.path || '-', iIp = log.internalIp || '-', eIp = log.externalIp || '-', lt = log.loginType || '';
+                var un = log.username || '', nm = log.name || '';
                 var last = groupedLogs[groupedLogs.length - 1];
-                if (last && last.op===op && last.path===p && last.iIp===iIp && last.eIp===eIp && last.lt===lt) { last.count++; last.latestTime = log.timestamp; }
-                else { groupedLogs.push({ op:op, path:p, iIp:iIp, eIp:eIp, lt:lt, count:1, latestTime:log.timestamp }); }
+                if (last && last.op===op && last.path===p && last.iIp===iIp && last.eIp===eIp && last.lt===lt && last.un===un && last.nm===nm) { last.count++; last.latestTime = log.timestamp; }
+                else { groupedLogs.push({ op:op, path:p, iIp:iIp, eIp:eIp, lt:lt, un:un, nm:nm, count:1, latestTime:log.timestamp }); }
               });
             %>
             <% groupedLogs.forEach(function(item) { %>
@@ -234,6 +246,8 @@
                 <td><%= item.path %></td>
                 <td class="hide-mobile"><%= item.iIp %></td>
                 <td class="hide-mobile"><%= item.eIp %></td>
+                <td class="hide-mobile"><% if (item.eIp && item.eIp !== '-' && item.eIp !== 'unknown') { %><span class="ip-location" data-ip="<%= item.eIp %>">-</span><% } else { %>-<% } %></td>
+                <td class="hide-mobile"><% if (item.un || item.nm) { %><%= item.un %><% if (item.nm) { %>（<%= item.nm %>）<% } %><% } %></td>
                 <td><%= item.lt %></td>
               </tr>
             <% }); %>
@@ -247,15 +261,15 @@
   <div class="pagination">
     <% var pgWindow = 2; var startPage = Math.max(1, currentPage - pgWindow); var endPage = Math.min(totalPages, currentPage + pgWindow); %>
     <% if (currentPage > 1) { %>
-      <a href="/logs?date=<%= dateFilter %>&page=<%= currentPage - 1 %>&limit=<%= limit %>" class="page-btn"><i class="fas fa-angle-left"></i></a>
+      <a href="/logs?date=<%= dateFilter %>&page=<%= currentPage - 1 %>&limit=<%= limit %><%- showApi ? '&showApi=1' : '' %>" class="page-btn"><i class="fas fa-angle-left"></i></a>
     <% } else { %>
       <span class="page-btn disabled"><i class="fas fa-angle-left"></i></span>
     <% } %>
     <% for (var p = startPage; p <= endPage; p++) { %>
-      <a href="/logs?date=<%= dateFilter %>&page=<%= p %>&limit=<%= limit %>" class="page-btn <%= p === currentPage ? 'active' : '' %>"><%= p %></a>
+      <a href="/logs?date=<%= dateFilter %>&page=<%= p %>&limit=<%= limit %><%- showApi ? '&showApi=1' : '' %>" class="page-btn <%= p === currentPage ? 'active' : '' %>"><%= p %></a>
     <% } %>
     <% if (currentPage < totalPages) { %>
-      <a href="/logs?date=<%= dateFilter %>&page=<%= currentPage + 1 %>&limit=<%= limit %>" class="page-btn"><i class="fas fa-angle-right"></i></a>
+      <a href="/logs?date=<%= dateFilter %>&page=<%= currentPage + 1 %>&limit=<%= limit %><%- showApi ? '&showApi=1' : '' %>" class="page-btn"><i class="fas fa-angle-right"></i></a>
     <% } else { %>
       <span class="page-btn disabled"><i class="fas fa-angle-right"></i></span>
     <% } %>
@@ -269,6 +283,8 @@
 function changeDate(value) {
   window.location.href = '/logs?date=' + value + '&limit=<%= limit %>';
 }
+
+// 跳转参数与筛选逻辑见上方 gotoLogs / toggleOnlyError / toggleShowApi / searchAll
 
 function toggleSession(idx) {
   var card = document.querySelector('[data-session="' + idx + '"]');
@@ -332,6 +348,123 @@ function filterBySearch(value) {
   });
 }
 
+var IP_COUNTS = <%- JSON.stringify(ipCounts || {}) %>;
+var REGION_MAP = new Map();
+var regionFilter = null;
+var PARAM_LIMIT = '&limit=<%- limit %>';
+var PARAM_ONLYERR = <%- onlyError ? "'&onlyError=1'" : "''" %>;
+var PARAM_SHOWAPI = <%- showApi ? "'&showApi=1'" : "''" %>;
+
+// 本机/回环地址不查地域（外网接口对 127.0.0.1 一律返回查询失败）
+function localLabel(ip) {
+  return (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') ? '本机' : null;
+}
+
+function gotoLogs(params) {
+  var box = document.getElementById('searchBox');
+  var p = PARAM_LIMIT + params;
+  if (box && box.value) p += '&q=' + encodeURIComponent(box.value);
+  window.location.href = '/logs?date=<%- dateFilter %>' + p;
+}
+
+function toggleShowApi(checked) {
+  gotoLogs(PARAM_ONLYERR + (checked ? '&showApi=1' : ''));
+}
+
+function toggleOnlyError(checked) {
+  gotoLogs(PARAM_SHOWAPI + (checked ? '&onlyError=1' : ''));
+}
+
+function searchAll() {
+  gotoLogs(PARAM_SHOWAPI + PARAM_ONLYERR);
+}
+
+async function resolveAllLocations() {
+  var els = Array.prototype.slice.call(document.querySelectorAll('.ip-location[data-ip]'));
+  var ips = [];
+  els.forEach(function(el) {
+    var ip = el.dataset.ip;
+    if (ip && ip !== '-' && ip !== 'unknown' && ips.indexOf(ip) === -1) ips.push(ip);
+  });
+  var idx = 0;
+  async function worker() {
+    while (idx < ips.length) {
+      var ip = ips[idx++];
+      var loc = localLabel(ip) || await queryIpLocation(ip);
+      REGION_MAP.set(ip, loc);
+      els.forEach(function(el) { if (el.dataset.ip === ip) el.textContent = loc; });
+    }
+  }
+  var workers = [];
+  for (var i = 0; i < 3; i++) workers.push(worker());
+  await Promise.all(workers);
+}
+
+async function buildRegionCard() {
+  var ips = Object.keys(IP_COUNTS).filter(function(ip) { return ip && ip !== '-' && ip !== 'unknown'; });
+  if (!ips.length) return;
+  ips.sort(function(a, b) { return IP_COUNTS[b] - IP_COUNTS[a]; });
+  var top = ips.slice(0, 20);
+  document.getElementById('regionCard').style.display = 'block';
+  var list = document.getElementById('regionList');
+  list.innerHTML = '<div style="color:#909399;font-size:13px;">地域查询中...</div>';
+  var idx = 0;
+  async function worker() {
+    while (idx < top.length) {
+      var ip = top[idx++];
+      var loc = localLabel(ip) || await queryIpLocation(ip);
+      REGION_MAP.set(ip, loc);
+    }
+  }
+  var workers = [];
+  for (var i = 0; i < 3; i++) workers.push(worker());
+  await Promise.all(workers);
+
+  var byRegion = {};
+  top.forEach(function(ip) {
+    var r = REGION_MAP.get(ip) || '未知';
+    if (!byRegion[r]) byRegion[r] = { count: 0, ips: [] };
+    byRegion[r].count += IP_COUNTS[ip];
+    byRegion[r].ips.push(ip);
+  });
+  var regions = Object.keys(byRegion).map(function(r) { return { name: r, count: byRegion[r].count, ips: byRegion[r].ips }; })
+    .sort(function(a, b) { return b.count - a.count; });
+  list.innerHTML = '';
+  regions.forEach(function(r, i) {
+    var div = document.createElement('div');
+    div.className = 'ranking-item';
+    div.style.cursor = 'pointer';
+    div.title = r.ips.join(', ');
+    div.setAttribute('data-region', r.name);
+    div.innerHTML = '<span class="ranking-index">' + (i + 1) + '.</span>' +
+      '<span class="ranking-path">' + r.name + '</span>' +
+      '<span class="ranking-count">' + r.count + ' 次 / ' + r.ips.length + ' 个 IP</span>';
+    div.onclick = function() { filterByRegion(r.name); };
+    list.appendChild(div);
+  });
+  var rest = ips.length - top.length;
+  if (rest > 0) {
+    var more = document.createElement('div');
+    more.style.cssText = 'font-size:12px;color:#909399;padding:4px 0;';
+    more.textContent = '另有 ' + rest + ' 个低频 IP 未查询地域';
+    list.appendChild(more);
+  }
+}
+
+function filterByRegion(region) {
+  regionFilter = (regionFilter === region) ? null : region;
+  document.querySelectorAll('.session-card').forEach(function(card) {
+    card.style.display = (!regionFilter || REGION_MAP.get(card.dataset.ip) === regionFilter) ? 'block' : 'none';
+  });
+  document.querySelectorAll('.log-table tbody tr').forEach(function(row) {
+    var el = row.querySelector('.ip-location[data-ip]');
+    var ip = el ? el.dataset.ip : '';
+    row.style.display = (!regionFilter || REGION_MAP.get(ip) === regionFilter) ? '' : 'none';
+  });
+  document.querySelectorAll('#regionList .ranking-item').forEach(function(item) {
+    item.style.background = (item.getAttribute('data-region') === regionFilter) ? 'rgba(64,158,255,.15)' : '';
+  });
+}
 var locationCache = new Map();
 async function queryIpLocation(ip) {
   if (locationCache.has(ip)) return locationCache.get(ip);
@@ -364,10 +497,8 @@ async function loadIpLocationsInCard(card) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-  // 页面加载后自动查询所有 IP 位置
-  document.querySelectorAll('.session-card').forEach(function(card) {
-    setTimeout(function() { loadIpLocationsInCard(card); }, 100);
-  });
+  // 按 IP 去重查询地域（会话卡片 + 明细表），再生成地域分布卡片
+  resolveAllLocations().then(function() { return buildRegionCard(); }).catch(function() {});
 });
 
 document.addEventListener('keydown', function(e) {

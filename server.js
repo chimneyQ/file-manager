@@ -28,6 +28,12 @@ const fs = require('fs-extra');
 // 加载配置
 const cfg = require('./config');
 
+// 会话密钥为必填项：缺失时拒绝启动，避免用空/默认密钥签发 session cookie
+if (!cfg.session.secret) {
+  console.error('[FATAL] 缺少 SESSION_SECRET：请在 .env 中设置一个随机密钥后重启');
+  process.exit(1);
+}
+
 // 生产环境抑制 console 输出
 if (cfg.server.env === 'production') {
   console.log = () => {};
@@ -337,8 +343,11 @@ app.use(session({
 const SKIP_LOG_PREFIXES = ['/css/', '/js/', '/images/', '/fonts/', '/webfonts/', '/favicon.ico'];
 app.use((req, res, next) => {
   if (SKIP_LOG_PREFIXES.some(p => req.path.startsWith(p))) return next();
+  const isApiRequest = req.path.startsWith('/api/');
   const startTime = Date.now();
   res.on('finish', () => {
+    // 接口类请求只在出错（4xx/5xx）时记录：正常接口请求占日志量约 85%，前端也不再展示
+    if (isApiRequest && res.statusCode < 400) return;
     const duration = Date.now() - startTime;
     writeLog(getLogFile(), createLogEntry(req, {
       method: req.method, path: req.path,

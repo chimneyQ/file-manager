@@ -9,6 +9,7 @@ runtime-config.json.bak
 
 # 备份文件
 *.bak
+*.bak-*
 *.pre-*.bak
 *.before-*.bak
 
@@ -28,6 +29,8 @@ data/users.json
 # 运行时数据与临时产物
 data/*.bak*
 data/users.json.*
+# 分享链接表含明文 token，等价于访问凭据，不入库
+data/share-links.json
 uploads/
 .tmp-*
 _t*.js
