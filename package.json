@@ -1,11 +1,14 @@
 {
-  "name": "file-manager",
-  "version": "1.0.0",
-  "description": "File upload and download manager with admin authentication",
+  "name": "self-hosted-file-manager",
+  "version": "1.1.0",
+  "description": "自托管文件管理器：上传下载、在线预览、回收站、分享链接、多用户与配额（Express + EJS，零外部依赖服务）",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "gen:secret": "node scripts/gen-secret.js",
+    "docker:build": "docker build -t file-manager .",
+    "docker:up": "docker compose up -d"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -23,5 +26,17 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
-  }
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "file-manager",
+    "self-hosted",
+    "express",
+    "upload",
+    "lan",
+    "h5ai"
+  ],
+  "private": true
 }

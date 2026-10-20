@@ -1,0 +1,21 @@
+services:
+  file-manager:
+    build: .
+    image: file-manager:latest
+    container_name: file-manager
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      # 必填：建议 `echo "SESSION_SECRET=$(openssl rand -hex 32)" > .env`
+      SESSION_SECRET: ${SESSION_SECRET:?请在 .env 或环境变量中设置 SESSION_SECRET}
+      UPLOAD_DIR: /app/uploads
+      LOG_DIR: /app/logs
+      RECYCLE_DIR: /app/.trash
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./.trash:/app/.trash
+

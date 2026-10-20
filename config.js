@@ -1,7 +1,13 @@
 /**
  * 文件管理器配置文件
  * 所有敏感配置统一管理，支持环境变量覆盖
+ *
+ * 可移植性：目录类配置默认落在项目根目录下（换机器、换路径都不用改代码），
+ * 也可以用环境变量指向任意绝对路径。
  */
+
+const path = require('path');
+const ROOT = __dirname;
 
 // 读取环境变量中的非负数（支持显式 0 与小数，如 0.5；非法值回退默认）
 const envNum = (name, dflt) => {
@@ -18,8 +24,10 @@ module.exports = {
 
   // ========== 目录配置 ==========
   dirs: {
-    upload: process.env.UPLOAD_DIR || 'D:\\Web\\uploads',
-    logs: process.env.LOG_DIR || 'D:\\Web\\logs',
+    // 上传文件根目录（默认：<项目目录>/uploads）
+    upload: process.env.UPLOAD_DIR || path.join(ROOT, 'uploads'),
+    // 日志与会话文件目录（默认：<项目目录>/logs）
+    logs: process.env.LOG_DIR || path.join(ROOT, 'logs'),
   },
 
   // ========== 管理员账号 ==========
@@ -139,7 +147,7 @@ module.exports = {
   // ========== 回收站配置 ==========
   recycleBin: {
     // 回收站目录
-    dir: process.env.RECYCLE_DIR || 'D:\\\\Web\\\\.trash',
+    dir: process.env.RECYCLE_DIR || path.join(ROOT, '.trash'),
     // 文件保留天数
     daysToKeep: 7,
     // 定时清理间隔（毫秒）

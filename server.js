@@ -24,15 +24,10 @@ const FileStore = require('session-file-store')(session);
 const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs-extra');
+const crypto = require('crypto');
 
 // 加载配置
 const cfg = require('./config');
-
-// 会话密钥为必填项：缺失时拒绝启动，避免用空/默认密钥签发 session cookie
-if (!cfg.session.secret) {
-  console.error('[FATAL] 缺少 SESSION_SECRET：请在 .env 中设置一个随机密钥后重启');
-  process.exit(1);
-}
 
 // 生产环境抑制 console 输出
 if (cfg.server.env === 'production') {
@@ -78,6 +73,53 @@ const saveRuntimeConfig = (data) => {
 const runtimeConfig = loadRuntimeConfig();
 if (runtimeConfig.admin && runtimeConfig.admin.passwordHash) {
   cfg.admin.passwordHash = runtimeConfig.admin.passwordHash;
+}
+
+if (runtimeConfig.session && runtimeConfig.session.secret) {
+  cfg.session.secret = runtimeConfig.session.secret;
+}
+
+// ============================================================================
+// 首次启动引导（可移植性关键）
+//   1) SESSION_SECRET 未配置 -> 生成随机密钥写入 runtime-config.json（重启后会话仍有效）
+//   2) 管理员密码完全未配置 -> 生成随机初始密码，控制台打印一次
+//   目的：下载解压后 npm install && npm start 即可用，无需手工算 bcrypt 哈希
+// ============================================================================
+let runtimeDirty = false;
+
+if (!cfg.session.secret) {
+  cfg.session.secret = crypto.randomBytes(32).toString('hex');
+  runtimeConfig.session = { ...(runtimeConfig.session || {}), secret: cfg.session.secret };
+  runtimeDirty = true;
+  process.stdout.write('[启动] 未配置 SESSION_SECRET，已生成随机密钥并写入 runtime-config.json\n' +
+    '       （多实例部署或希望会话跨机器共享时，请在 .env 显式设置 SESSION_SECRET）\n');
+}
+
+let initialPassword = null;
+if (!cfg.admin.passwordHash) {
+  initialPassword = crypto.randomBytes(9).toString('base64url');
+  cfg.admin.passwordHash = bcrypt.hashSync(initialPassword, 10);
+  runtimeConfig.admin = { passwordHash: cfg.admin.passwordHash, passwordChangedAt: null, initial: true };
+  runtimeDirty = true;
+}
+
+if (runtimeDirty) {
+  try {
+    fs.writeFileSync(RUNTIME_CONFIG_PATH, JSON.stringify(runtimeConfig, null, 2), 'utf8');
+  } catch (err) {
+    process.stdout.write('[启动] 写入 runtime-config.json 失败：' + err.message + '\n');
+  }
+}
+
+if (initialPassword) {
+  process.stdout.write(
+    '\n' + '='.repeat(64) + '\n' +
+    '  首次启动：已自动创建管理员账号\n' +
+    '  用户名：' + cfg.admin.username + '\n' +
+    '  初始密码：' + initialPassword + '\n' +
+    '  请登录后立即用「修改密码」更换（此密码只在本次显示）\n' +
+    '='.repeat(64) + '\n\n'
+  );
 }
 
 // ============================================================================

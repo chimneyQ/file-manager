@@ -1,112 +1,71 @@
-# 文件管理器部署说明
+# 部署与运维手册
 
-## 快速开始
+README 里的「部署方式」是简版，这份是运维细节。示例以 Linux 的 `/opt/file-manager` 为例，Windows 换成你的实际路径即可。
 
-### 1. 访问网站
-
-打开浏览器访问：**http://localhost:3000**
-
-### 2. 默认账号
-
-- **管理员账号**: `admin`
-- **管理员密码**: `admin123`
-
-### 3. 功能说明
-
-#### 普通用户（无需登录）
-- ✅ 浏览文件和文件夹
-- ✅ 下载文件
-- ✅ 上传文件到当前目录
-
-#### 管理员（需要登录）
-- ✅ 所有普通用户功能
-- ✅ 删除文件/文件夹
-- ✅ 创建新文件夹
-- ✅ 管理文件结构
-
-### 4. 管理命令
+## 1. 一次性准备
 
 ```bash
-# 启动服务
-manager.bat start
-
-# 停止服务
-manager.bat stop
-
-# 重启服务
-manager.bat restart
-
-# 查看状态
-manager.bat status
+cd /opt && git clone <仓库地址> file-manager && cd file-manager
+npm ci --omit=dev            # 有 package-lock.json 时用 ci
+cp .env.example .env
+npm run gen:secret >> .env   # 追加一个随机 SESSION_SECRET
+mkdir -p uploads logs .trash data
+npm start                    # 记下控制台打印的初始管理员密码
 ```
 
-### 5. 设置开机自启
+> 不建目录也能跑：启动时会自动创建 `uploads/`、`logs/`、`.trash/`。
 
-运行 `setup-autostart.bat`，选择选项 1 添加到开机自启。
+## 2. 常驻运行
 
-### 6. 修改配置
-
-编辑 `server.js` 文件：
-
-```javascript
-// 修改上传目录
-const UPLOAD_DIR = 'D:\\Web\\uploads';
-
-// 修改管理员账号
-const ADMIN_USERNAME = 'admin';
-
-// 修改管理员密码
-const ADMIN_PASSWORD_HASH = bcrypt.hashSync('新密码', 10);
-```
-
-或使用环境变量：
-
+### PM2
 ```bash
-set UPLOAD_DIR=D:\\Web\\uploads
-set ADMIN_USERNAME=admin
-set ADMIN_PASSWORD_HASH=密码哈希
-set PORT=3000
-node server.js
+npm i -g pm2
+pm2 start ecosystem.config.js
+pm2 logs file-manager
+pm2 save && pm2 startup
 ```
 
-## 文件结构
-
-```
-D:\Web\uploads\          # 文件上传目录（可自定义）
-file-manager\            # 项目目录
-├── server.js            # 主服务器
-├── manager.bat          # 管理脚本
-├── setup-autostart.bat  # 开机自启设置
-├── views\               # 页面模板
-│   ├── index.ejs        # 文件列表页
-│   └── login.ejs        # 登录页
-└── public\              # 静态资源
-    ├── css\style.css    # 样式
-    └── js\app.js        # 前端脚本
-```
-
-## 安全建议
-
-1. **修改默认密码**：首次使用后请修改管理员密码
-2. **设置防火墙**：如果对外提供服务，请配置防火墙规则
-3. **使用 HTTPS**：生产环境建议使用 HTTPS
-4. **定期备份**：定期备份上传目录中的重要文件
-
-## 故障排除
-
-### 端口被占用
-修改 `server.js` 中的端口或使用环境变量：
+### Docker
 ```bash
-set PORT=8080
-node server.js
+docker compose up -d --build
+docker compose logs -f
+docker compose exec file-manager sh   # 进容器排查
 ```
 
-### 权限问题
-确保 Node.js 有权限访问上传目录：
+### systemd
+见 README 的 unit 模板，改完执行 `systemctl restart file-manager && journalctl -u file-manager -f`。
+
+## 3. 升级
 ```bash
-# 检查目录权限
-icacls "D:\Web\uploads"
+git pull
+npm ci --omit=dev
+pm2 restart file-manager     # 或 docker compose up -d --build / systemctl restart file-manager
 ```
+升级不会动 `runtime-config.json`、`data/`、`uploads/`。
 
-### 服务无法启动
-检查日志文件 `server.log` 获取详细错误信息。
+## 4. 备份与迁移
+
+要备份的只有三样：`uploads/`（文件）、`data/`（用户与分享链接）、`runtime-config.json`（会话密钥与管理员哈希）。
+```bash
+tar czf fm-backup-$(date +%F).tar.gz uploads data runtime-config.json
+```
+迁移：把这三样放到新机器上，装好依赖直接启动，**不用改任何代码**（目录默认相对项目根，或用 `.env` 指到别处）。
+
+## 5. 日志与排查
+
+| 文件 | 内容 |
+| --- | --- |
+| `logs/access-YYYY-MM-DD.log` | 访问日志（按天轮转，UA 已压缩为摘要） |
+| `logs/error-*.log` | 错误日志 |
+| `logs/pm2-out.log` / `pm2-error.log` | PM2 输出（10MB 轮转，保留 30 个） |
+| `logs/sessions/` | session 文件（可随时清理，只会让用户重新登录） |
+
+## 6. 对外提供服务前的安全清单
+
+- [ ] 改掉初始管理员密码
+- [ ] 启用 HTTPS，并把 `config.js` 的 `session.cookieSecure` 改为 `true`
+- [ ] 视情况设置 `ALLOWED_ADMIN_IPS`
+- [ ] 确认 `.env` / `runtime-config.json` / `data/` 未被提交、未被打进镜像
+- [ ] 反向代理的上传体积上限与 `security.maxFileSize` 对齐
+- [ ] `uploads/` 所在磁盘留足空间，并设置 `UPLOAD_TOTAL_WARN_GB` / `UPLOAD_TOTAL_LIMIT_GB`
+

@@ -1,0 +1,16 @@
+node_modules
+.git
+.gitignore
+logs
+uploads
+.trash
+.env
+runtime-config.json
+runtime-config.json.bak
+data/users.json
+data/share-links.json
+*.bak
+*.bak-*
+*.log
+npm-debug.log*
+

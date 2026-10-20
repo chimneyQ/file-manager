@@ -13,7 +13,7 @@ runtime-config.json.bak
 *.pre-*.bak
 *.before-*.bak
 
-# 日志（PM2 日志和应用日志都在 D:\Web\logs\，但项目里的也忽略）
+# 日志（PM2 日志与应用日志，默认都落在项目内的 logs/）
 logs-stderr.log
 logs-stdout.log
 
@@ -43,3 +43,13 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# 运行期目录（默认都在项目内，不入库）
+logs/
+uploads/
+.trash/
+sessions/
+*.log
+
+# 环境变量未展开时误建的垃圾目录（内含机器本地面部识别数据，非项目内容）
+%SystemDrive%/
