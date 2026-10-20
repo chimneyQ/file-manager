@@ -81,6 +81,21 @@ npm run gen:secret     # 生成一个随机 SESSION_SECRET，贴进 .env
 | `data/share-links.json` | 分享链接（含访问 token） | 否 |
 | `runtime-config.json` | 会话密钥 + 管理员密码哈希 | 否 |
 
+## 平台支持
+
+纯 Node.js 实现，不调用任何平台专有命令（无 `cmd`/`sh`、无 `du`/`df`、无硬编码路径），因此：
+
+| 平台 | 状态 | 说明 |
+| --- | --- | --- |
+| Windows 10/11（x64/ARM64） | ✅ 已在用 | 开发与生产环境均为 Windows |
+| Linux（Debian/Ubuntu/CentOS/Alpine） | ✅ CI 覆盖 | 提供 systemd 与 Docker 两种方式 |
+| macOS（Intel / Apple Silicon） | ✅ CI 覆盖 | 与 Linux 用法一致 |
+| Docker（任意宿主） | ✅ 提供镜像定义 | `docker compose up -d` |
+
+CI 在 **Ubuntu / Windows / macOS × Node 18 / 20 / 22** 九种组合上跑同一套冒烟测试（`.github/workflows/ci.yml`），验证首启自举与登录链路。
+
+本地自测：`npm run smoke`（在已部署目录中只做静态检查，不会改动现有数据；在干净检出中会完整验证首次启动流程）。
+
 ## 部署方式
 
 ### A. 直接运行（前台）

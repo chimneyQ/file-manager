@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "gen:secret": "node scripts/gen-secret.js",
     "docker:build": "docker build -t file-manager .",
-    "docker:up": "docker compose up -d"
+    "docker:up": "docker compose up -d",
+    "smoke": "node scripts/smoke.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

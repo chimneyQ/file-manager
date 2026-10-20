@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ['18', '20', '22']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci --no-audit --no-fund
+
+      - name: 语法检查
+        run: |
+          node --check server.js
+          node --check config.js
+          node --check scripts/smoke.js
+
+      - name: 冒烟测试（首启自举 + 登录链路）
+        run: node scripts/smoke.js
+
+      - name: 检查是否误提交敏感文件
+        shell: bash
+        run: |
+          for f in .env runtime-config.json data/users.json data/share-links.json; do
+            if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+              echo "::error::$f 不应被提交"; exit 1;
+            fi
+          done
+          echo '敏感文件检查通过'
+
